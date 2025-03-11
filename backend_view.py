@@ -9,7 +9,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Define the Order model with basic fields
+# Defining the Order model with basic fields
 class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     order_type = db.Column(db.String(10), nullable=False)  # "buy" or "sell"
@@ -53,7 +53,7 @@ def get_orders():
     return jsonify([order.to_dict() for order in orders]), 200
 
 if __name__ == '__main__':
-    # Create the database tables if they don't exist
+    # Create the database tables 
     with app.app_context():
         db.create_all()
     app.run(debug=True)
