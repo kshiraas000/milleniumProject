@@ -12,7 +12,7 @@ db = SQLAlchemy(app)
 
 @app.route('/')
 def home():
-    return "Hello, world!"
+    return "Hello world!"
 
 # Defining the Order model with basic fields
 class Order(db.Model):
