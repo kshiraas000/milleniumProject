@@ -5,11 +5,8 @@ from random import choice
 
 app = Flask(__name__)
 # we need to input our MYSQL database here
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Stonegate123%21@localhost:3306/order_entry_database'
-
-#app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Stonegate123!@localhost:3306/order_entry_database'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Stonegate123!@localhost:3306/order_entry_database'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ECHO'] = True
 
 
 db = SQLAlchemy(app)
@@ -20,7 +17,6 @@ def home():
 
 # Defining the Order model with basic fields
 class Order(db.Model):
-    __tablename__ = 'orders'
     id = db.Column(db.Integer, primary_key=True)
     order_type = db.Column(db.String(10), nullable=False)  # "buy" or "sell"
     symbol = db.Column(db.String(10), nullable=False)
@@ -124,6 +120,4 @@ if __name__ == '__main__':
     # Create the database tables 
     with app.app_context():
         db.create_all()
-    app.run(debug=True, port=5001)
-
-
+    app.run(debug=True)

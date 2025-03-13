@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Management System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Order Management System</h2>
+    
+    <div class="controls">
+        <select id="orderType">
+            <option value="buy">Buy</option>
+            <option value="sell">Sell</option>
+        </select>
+        <input type="text" id="symbol" placeholder="Symbol">
+        <input type="number" id="quantity" placeholder="Quantity">
+        <button onclick="createOrder()">Create Order</button>
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>Symbol</th>
+                <th>Quantity</th>
+                <th>State</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="ordersTableBody"></tbody>
+    </table>
+
+    <script>
+        async function fetchOrders() {
+            const response = await fetch("http://localhost:5000/orders");
+            const orders = await response.json();
+            
+            const tableBody = document.getElementById("ordersTableBody");
+            tableBody.innerHTML = "";
+            
+            orders.forEach(order => {
+                const row = `<tr>
+                    <td>${order.id}</td>
+                    <td>${order.order_type}</td>
+                    <td>${order.symbol}</td>
+                    <td>${order.quantity}</td>
+                    <td>${order.state}</td>
+                    <td>
+                        <button onclick="executeOrder(${order.id})">Execute</button>
+                        <button onclick="cancelOrder(${order.id})">Cancel</button>
+                    </td>
+                </tr>`;
+                tableBody.innerHTML += row;
+            });
+        }
+        
+        async function createOrder() {
+            const orderType = document.getElementById("orderType").value;
+            const symbol = document.getElementById("symbol").value;
+            const quantity = document.getElementById("quantity").value;
+            
+            await fetch("http://localhost:5000/orders", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ order_type: orderType, symbol, quantity: parseInt(quantity, 10) })
+            });
+            fetchOrders();
+        }
+        
+        async function executeOrder(orderId) {
+            await fetch(`http://localhost:5000/orders/${orderId}/execute`, { method: "PUT" });
+            fetchOrders();
+        }
+        
+        async function cancelOrder(orderId) {
+            await fetch(`http://localhost:5000/orders/${orderId}/cancel`, { method: "PUT" });
+            fetchOrders();
+        }
+        
+        fetchOrders();
+    </script>
+</body>
+</html>
