@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from random import choice
 
 app = Flask(__name__)
 # we need to input our MYSQL database here
@@ -47,10 +48,68 @@ def create_order():
     return jsonify(new_order.to_dict()), 201
 
 # Endpoint to view all orders
+# @app.route('/orders', methods=['GET'])
+# def get_orders():
+#     orders = Order.query.all()
+#     return jsonify([order.to_dict() for order in orders]), 200
+@app.route('/orders/<int:order_id>/execute', methods=['PUT'])
+def execute_order(order_id):
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    if order.state not in ["new", "sent"]:
+        return jsonify({"error": "Order cannot be executed from this state"}), 400
+
+    # Simulating execution with a random state change
+    execution_state = choice(["filled", "partially filled"])
+    order.state = execution_state
+    db.session.commit()
+    return jsonify({"message": f"Order {order_id} has been {execution_state}"}), 200
+
+@app.route('/orders/<int:order_id>/state', methods=['PUT'])
+def change_order_state(order_id):
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    data = request.get_json()
+    new_state = data.get('state')
+
+    # Valid states
+    valid_states = ["new", "sent", "filled", "partially filled", "canceled", "rejected"]
+
+    if new_state not in valid_states:
+        return jsonify({"error": f"Invalid state. Valid states: {valid_states}"}), 400
+
+    order.state = new_state
+    db.session.commit()
+    return jsonify({"message": f"Order {order_id} updated to {new_state}"}), 200
+
+@app.route('/orders/<int:order_id>/cancel', methods=['PUT'])
+def cancel_order(order_id):
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    if order.state in ["filled", "partially filled"]:
+        return jsonify({"error": "Order cannot be canceled after execution"}), 400
+
+    order.state = "canceled"
+    db.session.commit()
+    return jsonify({"message": f"Order {order_id} has been canceled"}), 200
+
 @app.route('/orders', methods=['GET'])
 def get_orders():
-    orders = Order.query.all()
+    state_filter = request.args.get('state')
+    
+    if state_filter:
+        orders = Order.query.filter_by(state=state_filter).all()
+    else:
+        orders = Order.query.all()
+    
     return jsonify([order.to_dict() for order in orders]), 200
+
 
 if __name__ == '__main__':
     # Create the database tables 
