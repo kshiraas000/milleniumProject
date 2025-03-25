@@ -56,7 +56,7 @@
 
     <script>
         async function fetchOrders() {
-            const response = await fetch("http://localhost:5000/orders");
+            const response = await fetch("http://localhost:5001/orders");
             const orders = await response.json();
             
             const tableBody = document.getElementById("ordersTableBody");
@@ -83,21 +83,25 @@
             const symbol = document.getElementById("symbol").value;
             const quantity = document.getElementById("quantity").value;
             
-            await fetch("http://localhost:5000/orders", {
+            await fetch("http://localhost:5001/orders", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ order_type: orderType, symbol, quantity: parseInt(quantity, 10) })
+                body: JSON.stringify({ 
+                    order_type: orderType, 
+                    symbol: symbol, 
+                    quantity: parseInt(quantity, 10) 
+                })
             });
             fetchOrders();
         }
         
         async function executeOrder(orderId) {
-            await fetch(`http://localhost:5000/orders/${orderId}/execute`, { method: "PUT" });
+            await fetch(`http://localhost:5001/orders/${orderId}/execute`, { method: "PUT" });
             fetchOrders();
         }
         
         async function cancelOrder(orderId) {
-            await fetch(`http://localhost:5000/orders/${orderId}/cancel`, { method: "PUT" });
+            await fetch(`http://localhost:5001/orders/${orderId}/cancel`, { method: "PUT" });
             fetchOrders();
         }
         
