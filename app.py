@@ -6,7 +6,7 @@ from random import choice
 
 app = Flask(__name__)
 CORS(app)
-# we need to input our MYSQL database here
+
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Stonegate123!@127.0.0.1:3306/order_entry_database'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = True
