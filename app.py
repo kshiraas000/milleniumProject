@@ -56,11 +56,6 @@ def create_order():
     db.session.commit()
     return jsonify(new_order.to_dict()), 201
 
-# Endpoint to view all orders
-# @app.route('/orders', methods=['GET'])
-# def get_orders():
-#     orders = Order.query.all()
-#     return jsonify([order.to_dict() for order in orders]), 200
 @app.route('/orders/<int:order_id>/execute', methods=['PUT'])
 def execute_order(order_id):
     order = Order.query.get(order_id)
