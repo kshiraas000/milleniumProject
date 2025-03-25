@@ -2,12 +2,17 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from random import choice
+from dotenv import load_dotenv
+import os
 
 app = Flask(__name__)
-# we need to input our MYSQL database here
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Stonegate123%21@localhost:3306/order_entry_database'
 
-#app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Stonegate123!@localhost:3306/order_entry_database'
+load_dotenv()  # Load environment variables from .env file
+# we need to input our MYSQL database here
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
+
+#app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Stonegate123%21@localhost:3306/order_entry_database'
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = True
 
