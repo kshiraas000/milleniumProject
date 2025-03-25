@@ -25,6 +25,7 @@ class Order(db.Model):
     order_type = db.Column(db.String(10), nullable=False)  # "buy" or "sell"
     symbol = db.Column(db.String(10), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
+    limit_price = db.Column(db.Float, nullable=True)  # NULL for market orders
     state = db.Column(db.String(20), nullable=False, default='new')  # e.g., new, sent, filled, cancelled
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -34,6 +35,7 @@ class Order(db.Model):
             "order_type": self.order_type,
             "symbol": self.symbol,
             "quantity": self.quantity,
+            "limit_price": self.limit_price,
             "state": self.state,
             "created_at": self.created_at.isoformat()
         }
@@ -46,10 +48,16 @@ def create_order():
     if not data or 'order_type' not in data or 'symbol' not in data or 'quantity' not in data:
         return jsonify({"error": "Missing order data"}), 400
 
+     # Validate limit orders
+    if data['order_type'] == 'limit':
+        if 'limit_price' not in data or data['limit_price'] <= 0:
+            return jsonify({"error": "Limit price required for limit orders"}), 400
+
     new_order = Order(
         order_type=data['order_type'],
         symbol=data['symbol'],
         quantity=data['quantity'],
+        limit_price=data.get('limit_price') if data['order_type'] == 'limit' else None,
         state=data.get('state', 'new')
     )
     db.session.add(new_order)
