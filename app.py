@@ -22,11 +22,13 @@ def home():
 class Order(db.Model):
     __tablename__ = 'orders'
     id = db.Column(db.Integer, primary_key=True)
-    order_type = db.Column(db.String(10), nullable=False)  # "buy" or "sell"
+    order_type = db.Column(db.String(20), nullable=False)  # market, limit, stop, stop-limit, trailing-stop
     symbol = db.Column(db.String(10), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
-    limit_price = db.Column(db.Float, nullable=True)  # NULL for market orders
-    state = db.Column(db.String(20), nullable=False, default='new')  # e.g., new, sent, filled, cancelled
+    limit_price = db.Column(db.Float, nullable=True)   # for limit & stop-limit
+    stop_price = db.Column(db.Float, nullable=True)    # for stop & stop-limit
+    trail_amount = db.Column(db.Float, nullable=True)  # for trailing stop
+    state = db.Column(db.String(20), nullable=False, default='new')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -36,6 +38,8 @@ class Order(db.Model):
             "symbol": self.symbol,
             "quantity": self.quantity,
             "limit_price": self.limit_price,
+            "stop_price": self.stop_price,
+            "trail_amount": self.trail_amount,
             "state": self.state,
             "created_at": self.created_at.isoformat()
         }
@@ -49,17 +53,19 @@ def create_order():
         return jsonify({"error": "Missing order data"}), 400
 
      # Validate limit orders
-    if data['order_type'] == 'limit':
-        if 'limit_price' not in data or data['limit_price'] <= 0:
-            return jsonify({"error": "Limit price required for limit orders"}), 400
+    # if data['order_type'] == 'limit':
+    #     if 'limit_price' not in data or data['limit_price'] <= 0:
+    #         return jsonify({"error": "Limit price required for limit orders"}), 400
 
     new_order = Order(
         order_type=data['order_type'],
         symbol=data['symbol'],
         quantity=data['quantity'],
-        limit_price=data.get('limit_price') if data['order_type'] == 'limit' else None,
+        limit_price=data.get('limit_price'),
+        stop_price=data.get('stop_price'),
+        trail_amount=data.get('trail_amount'),
         state=data.get('state', 'new')
-    )
+        )
     db.session.add(new_order)
     db.session.commit()
     return jsonify(new_order.to_dict()), 201
@@ -121,7 +127,6 @@ def get_orders():
         orders = Order.query.all()
     
     return jsonify([order.to_dict() for order in orders]), 200
-
 
 if __name__ == '__main__':
     # Create the database tables 

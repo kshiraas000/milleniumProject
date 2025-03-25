@@ -121,13 +121,25 @@
     <div class="header">Order Entry System</div>
 
     <div class="form-group">
-      <select id="orderType">
-        <option value="buy">Buy</option>
-        <option value="sell">Sell</option>
-      </select>
-      <input type="text" id="symbol" placeholder="Symbol">
-      <input type="number" id="quantity" placeholder="Quantity">
-      <button onclick="createOrder()">Create</button>
+        <select id="orderCategory">
+            <option value="market">Market</option>
+            <option value="limit">Limit</option>
+            <option value="stop">Stop</option>
+            <option value="stop-limit">Stop-Limit</option>
+            <option value="trailing-stop">Trailing Stop</option>
+          </select>
+          
+          <select id="orderType">
+            <option value="buy">Buy</option>
+            <option value="sell">Sell</option>
+          </select>
+          
+          <input type="text" id="symbol" placeholder="Symbol">
+          <input type="number" id="quantity" placeholder="Quantity">
+          <input type="number" id="limitPrice" placeholder="Limit Price" style="display: none;">
+          <input type="number" id="stopPrice" placeholder="Stop Price" style="display: none;">
+          <input type="number" id="trailAmount" placeholder="Trailing Amount" style="display: none;">
+          <button onclick="createOrder()">Create</button>
     </div>
 
     <table>
@@ -146,6 +158,13 @@
   </div>
 
   <script>
+    document.getElementById("orderCategory").addEventListener("change", function () {
+    const category = this.value;
+
+    document.getElementById("limitPrice").style.display = (category === "limit" || category === "stop-limit") ? "inline-block" : "none";
+    document.getElementById("stopPrice").style.display = (category === "stop" || category === "stop-limit") ? "inline-block" : "none";
+    document.getElementById("trailAmount").style.display = (category === "trailing-stop") ? "inline-block" : "none";
+    });
     async function fetchOrders() {
       const res = await fetch("http://localhost:5001/orders");
       const orders = await res.json();
@@ -168,16 +187,27 @@
     }
 
     async function createOrder() {
-      const order_type = document.getElementById("orderType").value;
-      const symbol = document.getElementById("symbol").value;
-      const quantity = parseInt(document.getElementById("quantity").value);
+        const order_type = document.getElementById("orderCategory").value;
+        const symbol = document.getElementById("symbol").value;
+        const quantity = parseInt(document.getElementById("quantity").value);
+        const limit_price = parseFloat(document.getElementById("limitPrice").value) || null;
+        const stop_price = parseFloat(document.getElementById("stopPrice").value) || null;
+        const trail_amount = parseFloat(document.getElementById("trailAmount").value) || null;
 
-      await fetch("http://localhost:5001/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ order_type, symbol, quantity })
-      });
-      fetchOrders();
+        await fetch("http://localhost:5001/orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+            order_type,
+            symbol,
+            quantity,
+            limit_price,
+            stop_price,
+            trail_amount
+            })
+        });
+
+        fetchOrders();
     }
 
     async function executeOrder(id) {
