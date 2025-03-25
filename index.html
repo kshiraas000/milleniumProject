@@ -3,105 +3,194 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Management System</title>
+    <title>Millennium Order Entry</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;700&display=swap" rel="stylesheet">
     <style>
+        * {
+        box-sizing: border-box;
+        font-family: 'IBM Plex Serif', Georgia, serif;
+        }
+    
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
+        margin: 0;
+        background-color: #ffffff;
+        color: #1c1c1c;
         }
+    
+        .header {
+        background-color: #ffffff;
+        padding: 20px 40px;
+        border-bottom: 1px solid #e0e0e0;
+        }
+    
+        .header h1 {
+        color: #0047FF;
+        font-size: 2rem;
+        margin: 0;
+        }
+    
+        .main {
+        padding: 40px;
+        background-color: #f5f7fa;
+        }
+    
+        .card {
+        background-color: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 30px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+    
+        .card h2 {
+        color: #0047FF;
+        margin-top: 0;
+        }
+    
+        input, select, button {
+        margin: 10px 10px 10px 0;
+        padding: 10px 12px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        font-size: 14px;
+        }
+    
+        button {
+        background-color: #0047FF;
+        color: white;
+        border: none;
+        cursor: pointer;
+        }
+    
         table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
         }
+    
         th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
+        border: 1px solid #ddd;
+        padding: 12px;
+        text-align: left;
         }
+    
         th {
-            background-color: #f2f2f2;
+        background-color: #f0f2f5;
         }
-        .controls {
-            margin-bottom: 20px;
+    
+        .order-actions button {
+        margin-right: 6px;
         }
-    </style>
-</head>
-<body>
-    <h2>Order Management System</h2>
-    
-    <div class="controls">
-        <select id="orderType">
-            <option value="buy">Buy</option>
-            <option value="sell">Sell</option>
-        </select>
-        <input type="text" id="symbol" placeholder="Symbol">
-        <input type="number" id="quantity" placeholder="Quantity">
-        <button onclick="createOrder()">Create Order</button>
-    </div>
-    
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Type</th>
-                <th>Symbol</th>
-                <th>Quantity</th>
-                <th>State</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody id="ordersTableBody"></tbody>
-    </table>
+        .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 18px 40px;
+        background-color: #ffffff;
+        border-bottom: 1px solid #e5e7eb;
+        }
 
-    <script>
-        async function fetchOrders() {
-            const response = await fetch("http://localhost:5001/orders");
-            const orders = await response.json();
-            
-            const tableBody = document.getElementById("ordersTableBody");
-            tableBody.innerHTML = "";
-            
-            orders.forEach(order => {
-                const row = `<tr>
-                    <td>${order.id}</td>
-                    <td>${order.order_type}</td>
-                    <td>${order.symbol}</td>
-                    <td>${order.quantity}</td>
-                    <td>${order.state}</td>
-                    <td>
-                        <button onclick="executeOrder(${order.id})">Execute</button>
-                        <button onclick="cancelOrder(${order.id})">Cancel</button>
-                    </td>
-                </tr>`;
-                tableBody.innerHTML += row;
-            });
+        .branding {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #0047FF;
         }
-        
-        async function createOrder() {
-            const orderType = document.getElementById("orderType").value;
-            const symbol = document.getElementById("symbol").value;
-            const quantity = document.getElementById("quantity").value;
-            
-            await fetch("http://localhost:5001/orders", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ order_type: orderType, symbol, quantity: parseInt(quantity, 10) })
-            });
-            fetchOrders();
+
+        .nav-link {
+        color: #0047FF;
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 0.95rem;
         }
-        
-        async function executeOrder(orderId) {
-            await fetch(`http://localhost:5001/orders/${orderId}/execute`, { method: "PUT" });
-            fetchOrders();
+
+        .nav-link:hover {
+        text-decoration: underline;
         }
-        
-        async function cancelOrder(orderId) {
-            await fetch(`http://localhost:5001/orders/${orderId}/cancel`, { method: "PUT" });
-            fetchOrders();
-        }
-        
-        fetchOrders();
-    </script>
+
+    </style>
+    </head>
+    
+<body>
+    <div class="topbar">
+        <div class="branding">Millennium</div>
+        <div class="nav">
+          <a href="#" class="nav-link">Orders History</a>
+        </div>
+      </div>
+    <div class="main">
+    <div class="header">Order Entry System</div>
+
+    <div class="form-group">
+      <select id="orderType">
+        <option value="buy">Buy</option>
+        <option value="sell">Sell</option>
+      </select>
+      <input type="text" id="symbol" placeholder="Symbol">
+      <input type="number" id="quantity" placeholder="Quantity">
+      <button onclick="createOrder()">Create</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Type</th>
+          <th>Symbol</th>
+          <th>Quantity</th>
+          <th>State</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="ordersTableBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    async function fetchOrders() {
+      const res = await fetch("http://localhost:5001/orders");
+      const orders = await res.json();
+      const body = document.getElementById("ordersTableBody");
+      body.innerHTML = "";
+      orders.forEach(order => {
+        body.innerHTML += `
+          <tr>
+            <td>${order.id}</td>
+            <td>${order.order_type}</td>
+            <td>${order.symbol}</td>
+            <td>${order.quantity}</td>
+            <td>${order.state}</td>
+            <td class="actions">
+              <button onclick="executeOrder(${order.id})">Execute</button>
+              <button onclick="cancelOrder(${order.id})">Cancel</button>
+            </td>
+          </tr>`;
+      });
+    }
+
+    async function createOrder() {
+      const order_type = document.getElementById("orderType").value;
+      const symbol = document.getElementById("symbol").value;
+      const quantity = parseInt(document.getElementById("quantity").value);
+
+      await fetch("http://localhost:5001/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order_type, symbol, quantity })
+      });
+      fetchOrders();
+    }
+
+    async function executeOrder(id) {
+      await fetch(`http://localhost:5001/orders/${id}/execute`, { method: "PUT" });
+      fetchOrders();
+    }
+
+    async function cancelOrder(id) {
+      await fetch(`http://localhost:5001/orders/${id}/cancel`, { method: "PUT" });
+      fetchOrders();
+    }
+
+    fetchOrders();
+  </script>
 </body>
 </html>
