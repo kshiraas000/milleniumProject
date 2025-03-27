@@ -3,6 +3,9 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from random import choice
+from threading import Thread
+import time
+import random
 
 app = Flask(__name__)
 CORS(app)
@@ -17,6 +20,30 @@ db = SQLAlchemy(app)
 @app.route('/')
 def home():
     return "Hello world!"
+
+# Simulated price store (in-memory for now)
+live_prices = {
+    "AAPL": 150.00,
+    "MSFT": 310.00,
+    "TSLA": 720.00,
+    "NVDA": 920.00
+}
+
+def simulate_price_feed():
+    while True:
+        for symbol in live_prices:
+            # Simulate a small price change
+            change = random.uniform(-0.5, 0.5)
+            live_prices[symbol] = round(max(0, live_prices[symbol] + change), 2)
+        time.sleep(1)  # update every second
+
+@app.route('/price/<symbol>')
+def get_price(symbol):
+    price = live_prices.get(symbol.upper())
+    if price is None:
+        return jsonify({"error": "Symbol not found"}), 404
+    return jsonify({"symbol": symbol.upper(), "price": price})
+
 
 # Defining the Order model with basic fields
 class Order(db.Model):
@@ -132,6 +159,5 @@ if __name__ == '__main__':
     # Create the database tables 
     with app.app_context():
         db.create_all()
+    Thread(target=simulate_price_feed, daemon=True).start()
     app.run(debug=True, port=5001)
-
-

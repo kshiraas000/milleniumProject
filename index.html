@@ -135,6 +135,7 @@
           </select>
           
           <input type="text" id="symbol" placeholder="Symbol">
+          <div id="livePrice" style="margin: 10px 0; font-weight: bold;"></div>
           <input type="number" id="quantity" placeholder="Quantity">
           <input type="number" id="limitPrice" placeholder="Limit Price" style="display: none;">
           <input type="number" id="stopPrice" placeholder="Stop Price" style="display: none;">
@@ -164,6 +165,23 @@
     document.getElementById("limitPrice").style.display = (category === "limit" || category === "stop-limit") ? "inline-block" : "none";
     document.getElementById("stopPrice").style.display = (category === "stop" || category === "stop-limit") ? "inline-block" : "none";
     document.getElementById("trailAmount").style.display = (category === "trailing-stop") ? "inline-block" : "none";
+    });
+    document.getElementById("symbol").addEventListener("input", async function () {
+      const symbol = this.value.toUpperCase();
+      if (!symbol) return;
+
+      try {
+        const res = await fetch(`http://localhost:5001/price/${symbol}`);
+        const data = await res.json();
+        if (data.price) {
+          document.getElementById("livePrice").innerText = `Live Price: $${data.price.toFixed(2)}`;
+        } else {
+          document.getElementById("livePrice").innerText = "Symbol not found";
+        }
+      } catch (err) {
+        document.getElementById("livePrice").innerText = "";
+        console.error("Price fetch failed:", err);
+      }
     });
     async function fetchOrders() {
       const res = await fetch("http://localhost:5001/orders");
