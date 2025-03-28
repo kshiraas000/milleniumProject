@@ -37,6 +37,42 @@ def simulate_price_feed():
             live_prices[symbol] = round(max(0, live_prices[symbol] + change), 2)
         time.sleep(1)  # update every second
 
+def auto_execute_orders():
+    while True:
+        time.sleep(1)  # every second
+        with app.app_context():
+            open_orders = Order.query.filter(Order.state.in_(["new", "sent"])).all()
+            for order in open_orders:
+                symbol = order.symbol.upper()
+                market_price = live_prices.get(symbol)
+                if market_price is None:
+                    continue
+
+                should_execute = False
+
+                if order.order_type == "market":
+                    should_execute = True
+
+                elif order.order_type == "limit":
+                    if (order.limit_price is not None and
+                        ((order.symbol and order.state == "new") and
+                         ((order.order_type == "limit" and market_price <= order.limit_price and order.order_type == "buy") or
+                          (market_price >= order.limit_price and order.order_type == "sell")))):
+                        should_execute = True
+
+                elif order.order_type == "stop":
+                    if (order.stop_price is not None and
+                        ((market_price >= order.stop_price and order.order_type == "buy") or
+                         (market_price <= order.stop_price and order.order_type == "sell"))):
+                        should_execute = True
+
+                # (More logic can go here for stop-limit, trailing-stop...)
+
+                if should_execute:
+                    order.state = "filled"
+                    db.session.commit()
+
+
 @app.route('/price/<symbol>')
 def get_price(symbol):
     price = live_prices.get(symbol.upper())
@@ -160,4 +196,5 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     Thread(target=simulate_price_feed, daemon=True).start()
+    Thread(target=auto_execute_orders, daemon=True).start()
     app.run(debug=True, port=5001)
