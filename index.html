@@ -143,6 +143,13 @@
           <button onclick="createOrder()">Create</button>
     </div>
 
+    <div class="card">
+      <h2>Stock Prediction</h2>
+      <input type="text" id="predictSymbol" placeholder="Enter Stock Symbol">
+      <button onclick="fetchPrediction()">Predict</button>
+      <div id="predictionResult" style="margin-top: 10px; font-weight: bold;"></div>
+    </div>
+
     <table>
       <thead>
         <tr>
@@ -237,6 +244,38 @@
       await fetch(`http://localhost:5001/orders/${id}/cancel`, { method: "PUT" });
       fetchOrders();
     }
+
+    async function fetchPrediction() {
+        const symbol = document.getElementById("predictSymbol").value.toUpperCase();
+        if (!symbol) {
+            alert("Please enter a stock symbol.");
+            return;
+        }
+
+        try {
+            const res = await fetch(`http://localhost:5001/predict/${symbol}`);
+            const data = await res.json();
+
+            if (data.error) {
+                document.getElementById("predictionResult").innerText = "Error: " + data.error;
+                return;
+            }
+
+            let resultHTML = `<h3>Predicted Prices for ${symbol}</h3>`;
+            resultHTML += `<p>Current Price: $${data.current_price}</p>`;
+            resultHTML += `<p>Predicted Price (next 7 days): $${data.predicted_price}</p>`;
+            resultHTML += `<p>Expected Change: $${data.expected_change}</p>`;
+            resultHTML += `<p>Percentage Change: ${data.percentage_change}%</p>`;
+            resultHTML += `<p>Trend: ${data.trend}</p>`;
+
+            document.getElementById("predictionResult").innerHTML = resultHTML;
+
+        } catch (err) {
+            console.error("Prediction fetch failed:", err);
+            document.getElementById("predictionResult").innerText = "Failed to fetch predictions.";
+        }
+      }
+
 
     fetchOrders();
   </script>

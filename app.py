@@ -8,6 +8,10 @@ import time
 import random
 import os
 from dotenv import load_dotenv 
+import yfinance as yf
+import numpy as np
+from sklearn.linear_model import LinearRegression
+
 app = Flask(__name__)
 CORS(app)
 
@@ -194,6 +198,55 @@ def get_orders():
         orders = Order.query.all()
     
     return jsonify([order.to_dict() for order in orders]), 200
+
+@app.route('/predict/<symbol>', methods=['GET'])
+def predict_stock(symbol):
+    """
+    Predict stock price movement for the given symbol.
+    """
+    try:
+        # Fetch historical stock data
+        stock = yf.Ticker(symbol)
+        data = stock.history(period="1mo")  # Get 1 year of data
+        if data.empty:
+            return jsonify({"error": "No stock data found"}), 404
+        
+        # Prepare data
+        data = data[['Close']].reset_index()
+        data['Days'] = np.arange(len(data))  # Convert dates to numerical format
+
+        # Train a simple Linear Regression model
+        model = LinearRegression()
+        X = data[['Days']]
+        y = data['Close']
+        model.fit(X, y)
+
+        # Predict future price (next 7 days)
+        future_days = np.array([len(data) + i for i in range(1, 8)]).reshape(-1, 1)
+        predicted_prices = model.predict(future_days)
+          
+        # Prepare a dictionary for each day's prediction
+        predictions = {}
+        for i, price in enumerate(predicted_prices, start=1):
+            predictions[f"Day {i}"] = round(price, 2)
+
+        # Calculate expected profit/loss
+        current_price = data['Close'].iloc[-1]
+        expected_change = predicted_prices[-1] - current_price
+        percentage_change = (expected_change / current_price) * 100
+
+        return jsonify({
+            "symbol": symbol,
+            "current_price": round(current_price, 2),
+            "predicted_price": round(predicted_prices[-1], 2),
+            "expected_change": round(expected_change, 2),
+            "percentage_change": round(percentage_change, 2),
+            "trend": "profit" if expected_change > 0 else "loss",
+            "predictions": predictions 
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     # Create the database tables 
