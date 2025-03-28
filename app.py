@@ -3,11 +3,17 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from random import choice
+from threading import Thread
+import time
+import random
 
 app = Flask(__name__)
 CORS(app)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///millenium.db'
+load_dotenv()  # Load environment variables from .env file
+# we need to input our MYSQL database here
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = True
 
@@ -18,14 +24,41 @@ db = SQLAlchemy(app)
 def home():
     return "Hello world!"
 
+# Simulated price store (in-memory for now)
+live_prices = {
+    "AAPL": 150.00,
+    "MSFT": 310.00,
+    "TSLA": 720.00,
+    "NVDA": 920.00
+}
+
+def simulate_price_feed():
+    while True:
+        for symbol in live_prices:
+            # Simulate a small price change
+            change = random.uniform(-0.5, 0.5)
+            live_prices[symbol] = round(max(0, live_prices[symbol] + change), 2)
+        time.sleep(1)  # update every second
+
+@app.route('/price/<symbol>')
+def get_price(symbol):
+    price = live_prices.get(symbol.upper())
+    if price is None:
+        return jsonify({"error": "Symbol not found"}), 404
+    return jsonify({"symbol": symbol.upper(), "price": price})
+
+
 # Defining the Order model with basic fields
 class Order(db.Model):
     __tablename__ = 'orders'
     id = db.Column(db.Integer, primary_key=True)
-    order_type = db.Column(db.String(10), nullable=False)  # "buy" or "sell"
+    order_type = db.Column(db.String(20), nullable=False)  # market, limit, stop, stop-limit, trailing-stop
     symbol = db.Column(db.String(10), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
-    state = db.Column(db.String(20), nullable=False, default='new')  # e.g., new, sent, filled, cancelled
+    limit_price = db.Column(db.Float, nullable=True)   # for limit & stop-limit
+    stop_price = db.Column(db.Float, nullable=True)    # for stop & stop-limit
+    trail_amount = db.Column(db.Float, nullable=True)  # for trailing stop
+    state = db.Column(db.String(20), nullable=False, default='new')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -34,6 +67,9 @@ class Order(db.Model):
             "order_type": self.order_type,
             "symbol": self.symbol,
             "quantity": self.quantity,
+            "limit_price": self.limit_price,
+            "stop_price": self.stop_price,
+            "trail_amount": self.trail_amount,
             "state": self.state,
             "created_at": self.created_at.isoformat()
         }
@@ -46,21 +82,24 @@ def create_order():
     if not data or 'order_type' not in data or 'symbol' not in data or 'quantity' not in data:
         return jsonify({"error": "Missing order data"}), 400
 
+     # Validate limit orders
+    # if data['order_type'] == 'limit':
+    #     if 'limit_price' not in data or data['limit_price'] <= 0:
+    #         return jsonify({"error": "Limit price required for limit orders"}), 400
+
     new_order = Order(
         order_type=data['order_type'],
         symbol=data['symbol'],
         quantity=data['quantity'],
+        limit_price=data.get('limit_price'),
+        stop_price=data.get('stop_price'),
+        trail_amount=data.get('trail_amount'),
         state=data.get('state', 'new')
-    )
+        )
     db.session.add(new_order)
     db.session.commit()
     return jsonify(new_order.to_dict()), 201
 
-# Endpoint to view all orders
-# @app.route('/orders', methods=['GET'])
-# def get_orders():
-#     orders = Order.query.all()
-#     return jsonify([order.to_dict() for order in orders]), 200
 @app.route('/orders/<int:order_id>/execute', methods=['PUT'])
 def execute_order(order_id):
     order = Order.query.get(order_id)
@@ -119,11 +158,9 @@ def get_orders():
     
     return jsonify([order.to_dict() for order in orders]), 200
 
-
 if __name__ == '__main__':
     # Create the database tables 
     with app.app_context():
         db.create_all()
+    Thread(target=simulate_price_feed, daemon=True).start()
     app.run(debug=True, port=5001)
-
-
