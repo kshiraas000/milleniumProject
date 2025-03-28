@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Options - Millennium</title>
+  <link rel="stylesheet" href="static/styles.css">
+  <script src="static/nav.js" defer></script>
+
+</head>
+<body>
+  <div class="main">
+    <div class="card">
+      <h2>Options Order Entry</h2>
+      <select id="optionType">
+        <option value="call">Call</option>
+        <option value="put">Put</option>
+      </select>
+      <input type="text" id="optionSymbol" placeholder="Underlying Symbol (e.g. AAPL)">
+      <input type="number" id="strikePrice" placeholder="Strike Price">
+      <input type="date" id="expirationDate" placeholder="Expiration Date">
+      <input type="number" id="optionQuantity" placeholder="Contracts (x100)">
+      <select id="optionOrderType">
+        <option value="market">Market</option>
+        <option value="limit">Limit</option>
+      </select>
+      <input type="number" id="limitPriceOption" placeholder="Limit Price (optional)">
+      <button onclick="createOptionOrder()">Create Option Order</button>
+    </div>
+  </div>
+
+  <script>
+    async function createOptionOrder() {
+      const order_type = document.getElementById("optionOrderType").value;
+      const option_type = document.getElementById("optionType").value;
+      const symbol = document.getElementById("optionSymbol").value.toUpperCase();
+      const strike_price = parseFloat(document.getElementById("strikePrice").value);
+      const expiration_date = document.getElementById("expirationDate").value;
+      const quantity = parseInt(document.getElementById("optionQuantity").value);
+      const limit_price = parseFloat(document.getElementById("limitPriceOption").value) || null;
+
+      await fetch("http://localhost:5001/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          security_type: "option",
+          order_type,
+          option_type,
+          symbol,
+          strike_price,
+          expiration_date,
+          quantity,
+          limit_price
+        })
+      });
+
+      alert("✅ Option order submitted!");
+    }
+  </script>
+</body>
+</html>
