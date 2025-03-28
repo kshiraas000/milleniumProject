@@ -7,7 +7,7 @@ from random import choice
 app = Flask(__name__)
 CORS(app)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Stonegate123!@127.0.0.1:3306/order_entry_database'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///millenium.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = True
 
