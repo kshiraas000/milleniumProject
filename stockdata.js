@@ -1,16 +1,10 @@
 const axios = require('axios');
 
-/**
- * Fetches stock chart data from Alpha Vantage.
- *
- * @param {string} symbol - Stock ticker symbol (e.g., 'IBM').
- * @param {string} interval - Data interval for intraday data (e.g., '5min').
- * @param {string} functionType - API function type (e.g., 'TIME_SERIES_INTRADAY' or 'TIME_SERIES_DAILY').
- * @returns {Promise<Object>} - A promise that resolves to an object mapping epoch seconds to a stock value.
- */
+// Fetches stock chart data from Alpha Vantage.
+
 async function getStockChartData(symbol, interval = '5min', functionType = 'TIME_SERIES_INTRADAY') {
 
-  const API_KEY = process.env.ALPHA_VANTAGE_API_KEY || 'W8QF38LZKL29QUJ2';
+  const API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY") || 'W8QF38LZKL29QUJ2';
 
   let url = `https://www.alphavantage.co/query?function=${functionType}&symbol=${symbol}&apikey=${API_KEY}`;
   if (functionType === 'TIME_SERIES_INTRADAY') {
