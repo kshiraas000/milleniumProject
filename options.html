@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Options - Millennium</title>
+  <link rel="stylesheet" href="static/styles.css">
+  <script src="static/nav.js" defer></script>
+</head>
+
+<body>
+  <div class="main">
+    <div class="card">
+      <h2>Options Order Entry</h2>
+      <select id="optionType">
+        <option value="call">Call</option>
+        <option value="put">Put</option>
+      </select>
+      <input type="text" id="optionSymbol" placeholder="Underlying Symbol (e.g. AAPL)">
+      <div id="optionLivePrice" style="margin: 10px 0; font-weight: bold;"></div>
+      <input type="number" id="strikePrice" placeholder="Strike Price">
+      <input type="date" id="expirationDate" placeholder="Expiration Date">
+      <input type="number" id="optionQuantity" placeholder="Contracts (x100)">
+      <select id="optionOrderType">
+        <option value="market">Market</option>
+        <option value="limit">Limit</option>
+      </select>
+      <input type="number" id="limitPriceOption" placeholder="Limit Price (optional)">
+      <button onclick="createOptionOrder()">Create Option Order</button>
+      <h2>Black-Scholes Option Price Calculator</h2>
+      <input type="number" id="bsSymbolPrice" placeholder="Stock Price (S)">
+      <input type="number" id="bsStrikePrice" placeholder="Strike Price (K)">
+      <input type="number" id="bsTime" placeholder="Time to Expiration (Years)">
+      <input type="number" id="bsRate" placeholder="Risk-Free Rate (r, decimal)">
+      <input type="number" id="bsVolatility" placeholder="Volatility (σ, decimal)">
+      <select id="bsOptionType">
+        <option value="call">Call</option>
+        <option value="put">Put</option>
+      </select>
+      <button onclick="calculateBS()">Calculate</button>
+      <div id="bsResult" style="margin-top: 10px; font-weight: bold;"></div>
+
+      <h2>Recent Option Orders</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Type</th>
+            <th>Symbol</th>
+            <th>Strike</th>
+            <th>Expiration</th>
+            <th>Qty</th>
+            <th>Limit</th>
+            <th>State</th>
+          </tr>
+        </thead>
+        <tbody id="optionsTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById("optionSymbol").addEventListener("input", async function () {
+      const symbol = this.value.toUpperCase();
+      if (!symbol) return;
+
+      try {
+        const res = await fetch(`http://localhost:5001/price/${symbol}`);
+        const data = await res.json();
+        if (data.price) {
+          document.getElementById("optionLivePrice").innerText = `Live Price: $${data.price.toFixed(2)}`;
+        } else {
+          document.getElementById("optionLivePrice").innerText = "Symbol not found";
+        }
+      } catch (err) {
+        document.getElementById("optionLivePrice").innerText = "";
+        console.error("Price fetch failed:", err);
+      }
+    });
+
+    async function fetchOptionOrders() {
+      const res = await fetch("http://localhost:5001/orders");
+      const orders = await res.json();
+      const body = document.getElementById("optionsTableBody");
+      body.innerHTML = "";
+
+      orders
+        .filter(order => order.security_type === "option")
+        .forEach(order => {
+          body.innerHTML += `
+            <tr>
+              <td>${order.id}</td>
+              <td>${order.option_type}</td>
+              <td>${order.symbol}</td>
+              <td>${order.strike_price}</td>
+              <td>${order.expiration_date}</td>
+              <td>${order.quantity}</td>
+              <td>${order.limit_price ?? '-'}</td>
+              <td>${order.state}</td>
+            </tr>
+          `;
+        });
+    }
+
+    async function createOptionOrder() {
+      const order_type = document.getElementById("optionOrderType").value;
+      const option_type = document.getElementById("optionType").value;
+      const symbol = document.getElementById("optionSymbol").value.toUpperCase();
+      const strike_price = parseFloat(document.getElementById("strikePrice").value);
+      const expiration_date = document.getElementById("expirationDate").value;
+      const quantity = parseInt(document.getElementById("optionQuantity").value);
+      const limit_price = parseFloat(document.getElementById("limitPriceOption").value) || null;
+
+      await fetch("http://localhost:5001/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          security_type: "option",
+          order_type,
+          option_type,
+          symbol,
+          strike_price,
+          expiration_date,
+          quantity,
+          limit_price
+        })
+      });
+
+      fetchOptionOrders(); // ✅ Refresh table after submission
+    }
+
+    // Load option orders on page load
+    window.onload = fetchOptionOrders;
+    function calculateBS() {
+      const S = parseFloat(document.getElementById("bsSymbolPrice").value);
+      const K = parseFloat(document.getElementById("bsStrikePrice").value);
+      const T = parseFloat(document.getElementById("bsTime").value);
+      const r = parseFloat(document.getElementById("bsRate").value);
+      const sigma = parseFloat(document.getElementById("bsVolatility").value);
+      const type = document.getElementById("bsOptionType").value;
+
+      if (!S || !K || !T || !sigma || isNaN(r)) {
+        document.getElementById("bsResult").innerText = "⚠️ Please fill in all fields.";
+        return;
+      }
+
+      const d1 = (Math.log(S / K) + (r + sigma * sigma / 2) * T) / (sigma * Math.sqrt(T));
+      const d2 = d1 - sigma * Math.sqrt(T);
+
+      const Nd1 = cdf(d1);
+      const Nd2 = cdf(d2);
+      const Nnegd1 = cdf(-d1);
+      const Nnegd2 = cdf(-d2);
+
+      let price;
+      if (type === "call") {
+        price = S * Nd1 - K * Math.exp(-r * T) * Nd2;
+      } else {
+        price = K * Math.exp(-r * T) * Nnegd2 - S * Nnegd1;
+      }
+
+      document.getElementById("bsResult").innerText = `${type.toUpperCase()} Option Value: $${price.toFixed(2)}`;
+
+      const phi = x => Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+
+      const delta = type === "call" ? Nd1 : Nd1 - 1;
+      const gamma = phi(d1) / (S * sigma * Math.sqrt(T));
+      const vega = S * phi(d1) * Math.sqrt(T);
+      const theta = type === "call"
+        ? (-S * phi(d1) * sigma) / (2 * Math.sqrt(T)) - r * K * Math.exp(-r * T) * Nd2
+        : (-S * phi(d1) * sigma) / (2 * Math.sqrt(T)) + r * K * Math.exp(-r * T) * Nnegd2;
+      const rho = type === "call"
+        ? K * T * Math.exp(-r * T) * Nd2
+        : -K * T * Math.exp(-r * T) * Nnegd2;
+
+      document.getElementById("bsResult").innerHTML = `
+        <strong>${type.toUpperCase()} Option Value:</strong> $${price.toFixed(2)}<br>
+        Delta: ${delta.toFixed(4)}<br>
+        Gamma: ${gamma.toFixed(4)}<br>
+        Vega: ${vega.toFixed(4)}<br>
+        Theta: ${theta.toFixed(4)}<br>
+        Rho: ${rho.toFixed(4)}
+      `;
+    }
+
+    function getSuggestions(delta, gamma, theta, vega, rho, type) {
+      const suggestions = [];
+
+      if ((type === "call" && delta > 0.8) || (type === "put" && delta < -0.8)) {
+        suggestions.push("Deep in-the-money: Consider a covered strategy.");
+      } else if (Math.abs(delta) < 0.3) {
+        suggestions.push("Low Delta: Unlikely to be profitable without a large move.");
+      }
+
+      if (gamma > 0.1) {
+        suggestions.push("High Gamma: Rapid changes in Delta—be cautious.");
+      }
+
+      if (theta < -0.05) {
+        suggestions.push("Time decay is significant—maybe use a spread strategy.");
+      }
+
+      if (vega > 0.2) {
+        suggestions.push("High Vega: Ideal for volatility trades, but risky in calm markets.");
+      }
+
+      if (Math.abs(rho) > 0.5) {
+        suggestions.push("Interest-rate sensitivity detected. Useful in macro trades.");
+      }
+
+      return suggestions;
+    }
+
+    const tips = getSuggestions(delta, gamma, theta, vega, rho, type);
+    document.getElementById("bsResult").innerHTML += "<br><br><strong>Suggestions:</strong><ul>" +
+      tips.map(t => `<li>${t}</li>`).join("") + "</ul>";
+
+    // Standard normal cumulative distribution function
+    function cdf(x) {
+      return (1.0 + erf(x / Math.sqrt(2))) / 2.0;
+    }
+
+    // Approximate the error function
+    function erf(x) {
+      // Abramowitz and Stegun formula 7.1.26
+      const sign = x < 0 ? -1 : 1;
+      x = Math.abs(x);
+
+      const a1 =  0.254829592;
+      const a2 = -0.284496736;
+      const a3 =  1.421413741;
+      const a4 = -1.453152027;
+      const a5 =  1.061405429;
+      const p  =  0.3275911;
+
+      const t = 1 / (1 + p * x);
+      const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+
+      return sign * y;
+    }
+
+  </script>
+</body>
+</html>
