@@ -71,7 +71,7 @@
         const res = await fetch(`http://localhost:5001/price/${symbol}`);
         const data = await res.json();
         if (data.price) {
-          document.getElementById("livePrice").innerText = `Live Price: $${data.price.toFixed(2)}`;
+          document.getElementById("livePrice").innerText = `Live Price: $${data.price}`;
         } else {
           document.getElementById("livePrice").innerText = "Symbol not found";
         }
