@@ -17,6 +17,8 @@ from tensorflow.keras.layers import LSTM, Dense
 from sklearn.preprocessing import MinMaxScaler
 import pandas_ta as ta
 from sklearn.metrics import mean_absolute_error
+from tensorflow.keras.models import load_model
+import openai
 
 app = Flask(__name__)
 CORS(app)
@@ -24,6 +26,7 @@ CORS(app)
 load_dotenv()  # Load environment variables from .env file
 # we need to input our MYSQL database here
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = True
@@ -315,65 +318,100 @@ def get_orders():
     
     return jsonify([order.to_dict() for order in orders]), 200
 
+# In-memory cache to avoid reloading models repeatedly
+MODEL_CACHE = {}
+SCALER_CACHE = {}
+
+def load_model_and_scaler(symbol):
+    symbol = symbol.lower()
+    model_path = f"models/{symbol}_lstm.h5"
+    scaler_path = f"models/{symbol}_scaler.npy"
+
+    if not os.path.exists(model_path) or not os.path.exists(scaler_path):
+        print(f"Model not found for {symbol.upper()} – training now...")
+        train_and_save_model(symbol)
+
+    # Always reload after retrain
+    MODEL_CACHE.pop(symbol, None)
+    SCALER_CACHE.pop(symbol, None)
+
+    if symbol not in MODEL_CACHE:
+        MODEL_CACHE[symbol] = load_model(model_path, compile=False)
+        SCALER_CACHE[symbol] = np.load(scaler_path, allow_pickle=True).item()
+
+    return MODEL_CACHE[symbol], SCALER_CACHE[symbol]
+
+def train_and_save_model(symbol):
+    from sklearn.preprocessing import MinMaxScaler
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import LSTM, Dense
+
+    df = yf.Ticker(symbol).history(period="1y", interval="1d")
+
+    if df.empty or len(df) < 100:
+        raise Exception(f"Not enough data to train model for {symbol.upper()}")
+
+    df['SMA_10'] = ta.sma(df['Close'], length=10)
+    df['EMA_10'] = ta.ema(df['Close'], length=10)
+    df['RSI'] = ta.rsi(df['Close'], length=14)
+    df.dropna(inplace=True)
+
+    feature_cols = ['Close', 'Volume', 'SMA_10', 'EMA_10', 'RSI']
+    data = df[feature_cols].values
+
+    scaler = MinMaxScaler()
+    scaled_data = scaler.fit_transform(data)
+
+    X, y = [], []
+    window = 60
+    for i in range(window, len(scaled_data) - 7):
+        X.append(scaled_data[i - window:i])
+        y.append(scaled_data[i:i + 7, 0])  # only Close
+
+    X, y = np.array(X), np.array(y)
+
+    model = Sequential()
+    model.add(LSTM(units=64, input_shape=(X.shape[1], X.shape[2])))
+    model.add(Dense(7))
+    model.compile(optimizer='adam', loss='mse')
+    model.fit(X, y, epochs=10, batch_size=32, verbose=0)
+
+    os.makedirs("models", exist_ok=True)
+    model.save(f"models/{symbol.lower()}_lstm.h5", include_optimizer=False)
+    np.save(f"models/{symbol.lower()}_scaler.npy", scaler)
+
 @app.route('/predict/<symbol>', methods=['GET'])
 def predict_stock(symbol):
     try:
-        # Fetch historical data
+        # 1. Get the most recent 60 days of data
         stock = yf.Ticker(symbol)
         df = stock.history(period="6mo", interval="1d")
 
-        if df.empty or len(df) < 100:
-            return jsonify({"error": "Not enough historical data."}), 404
+        if df.empty or len(df) < 65:
+            return jsonify({"error": "Not enough recent data for prediction"}), 404
 
-        # Calculate technical indicators
         df['SMA_10'] = ta.sma(df['Close'], length=10)
         df['EMA_10'] = ta.ema(df['Close'], length=10)
         df['RSI'] = ta.rsi(df['Close'], length=14)
+        df.dropna(inplace=True)
 
-        # Drop rows with NaNs
-        df = df.dropna()
-
-        # Use these features
+        # 2. Select only the last 60 days of features
         feature_cols = ['Close', 'Volume', 'SMA_10', 'EMA_10', 'RSI']
-        data = df[feature_cols].values
+        latest_data = df[feature_cols].values[-60:]
 
-        # Normalize
-        scaler = MinMaxScaler()
-        scaled_data = scaler.fit_transform(data)
+        # 3. Load model + scaler
+        model, scaler = load_model_and_scaler(symbol)
+        scaled_input = scaler.transform(latest_data).reshape(1, 60, len(feature_cols))
 
-        # Prepare sequences for training
-        X, y = [], []
-        window_size = 60
-        for i in range(window_size, len(scaled_data) - 7):
-            X.append(scaled_data[i - window_size:i])
-            y.append(scaled_data[i:i+7, 0])  # Predict 7 days of Close only
-
-        X, y = np.array(X), np.array(y)
-
-        # Train LSTM
-        model = Sequential()
-        model.add(LSTM(units=64, return_sequences=False, input_shape=(X.shape[1], X.shape[2])))
-        model.add(Dense(7))  # 7-day forecast
-        model.compile(optimizer='adam', loss='mse')
-        model.fit(X, y, epochs=10, batch_size=32, verbose=0)
-
-        # Prepare last window of input for forecasting
-        last_window = scaled_data[-window_size:]
-        input_seq = np.expand_dims(last_window, axis=0)
-
-        # Predict next 7 days
-        pred_scaled = model.predict(input_seq)[0]
-        pred_combined = np.zeros((7, scaled_data.shape[1]))
-        pred_combined[:, 0] = pred_scaled  # predicted 'Close'
+        # 4. Make 7-day prediction
+        pred_scaled = model.predict(scaled_input)[0]
+        pred_combined = np.zeros((7, len(feature_cols)))
+        pred_combined[:, 0] = pred_scaled  # Only 'Close' is predicted
         pred_actual = scaler.inverse_transform(pred_combined)[:, 0]
-        predictions = [round(p, 2) for p in pred_actual]
 
-        # Compare with recent actual prices (last 7 days)
-        actual_recent = df['Close'].values[-7:]
-        mae = round(mean_absolute_error(actual_recent, predictions), 4)
-
-        current_price = round(df['Close'].iloc[-1], 2)
-        predicted_final = round(predictions[-1], 2)
+        predictions = [round(float(p), 2) for p in pred_actual]
+        current_price = round(float(df['Close'].iloc[-1]), 2)
+        predicted_final = predictions[-1]
         expected_change = round(predicted_final - current_price, 2)
         pct_change = round((expected_change / current_price) * 100, 2)
 
@@ -384,11 +422,32 @@ def predict_stock(symbol):
             "expected_change": expected_change,
             "percentage_change": pct_change,
             "trend": "profit" if expected_change > 0 else "loss",
-            "predictions": {f"Day {i+1}": float(price) for i, price in enumerate(predictions)},
-            "mae_vs_actuals": mae
+            "predictions": {f"Day {i+1}": p for i, p in enumerate(predictions)}
         })
 
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/train/<symbol>", methods=["POST"])
+def force_train(symbol):
+    symbol = symbol.upper()
+    try:
+        print(f"🔁 Forcing retrain for {symbol}...")
+
+        # Step 1: Retrain model on fresh data
+        train_and_save_model(symbol)
+
+        # Step 2: Clear any cached model/scaler in memory
+        MODEL_CACHE.pop(symbol.lower(), None)
+        SCALER_CACHE.pop(symbol.lower(), None)
+
+        print(f"Retrained and reloaded model for {symbol}")
+        return jsonify({"message": f"{symbol} model retrained and reloaded."})
+
+    except Exception as e:
+        print(f"Retrain error for {symbol}: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

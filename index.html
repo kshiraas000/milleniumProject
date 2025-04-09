@@ -8,7 +8,8 @@
     
 <body>
     <div class="main">
-    <div class="header">Order Entry System</div>
+    <div class="header"><h2>Order Entry System</h2></div>
+    
 
     <div class="form-group">
         <select id="orderCategory">
@@ -25,7 +26,6 @@
           </select>
           
           <input type="text" id="symbol" placeholder="Symbol">
-          <div id="livePrice" style="margin: 10px 0; font-weight: bold;"></div>
           <input type="number" id="quantity" placeholder="Quantity">
           <input type="number" id="limitPrice" placeholder="Limit Price" style="display: none;">
           <input type="number" id="stopPrice" placeholder="Stop Price" style="display: none;">
@@ -35,9 +35,14 @@
 
     <div class="card">
       <h2>Stock Prediction</h2>
-      <input type="text" id="predictSymbol" placeholder="Enter Stock Symbol">
-      <button onclick="fetchPrediction()">Predict</button>
-      <div id="predictionResult" style="margin-top: 10px; font-weight: bold;"></div>
+      <input type="text" id="stockSymbol" placeholder="Enter Stock Symbol">
+      <div style="margin-top: 10px;">
+        <button onclick="fetchPrediction()">Predict</button>
+        <button onclick="retrainModel()">Train Model</button>
+      </div>
+      <div id="predictionResult" style="margin-top: 15px; font-weight: bold;"></div>
+      <div id="retrainResult" style="margin-top: 10px; font-style: italic; color: #444;"></div>
+      <p id="retrainTimestamp" style="color: #999; font-size: 0.9em;"></p>
     </div>
 
     <table>
@@ -67,18 +72,18 @@
       const symbol = this.value.toUpperCase();
       if (!symbol) return;
 
-      try {
-        const res = await fetch(`http://localhost:5001/price/${symbol}`);
-        const data = await res.json();
-        if (data.price) {
-          document.getElementById("livePrice").innerText = `Live Price: $${data.price}`;
-        } else {
-          document.getElementById("livePrice").innerText = "Symbol not found";
-        }
-      } catch (err) {
-        document.getElementById("livePrice").innerText = "";
-        console.error("Price fetch failed:", err);
-      }
+      // try {
+      //   const res = await fetch(`http://localhost:5001/price/${symbol}`);
+      //   const data = await res.json();
+      //   if (data.price) {
+      //     document.getElementById("livePrice").innerText = `Live Price: $${data.price}`;
+      //   } else {
+      //     document.getElementById("livePrice").innerText = "Symbol not found";
+      //   }
+      // } catch (err) {
+      //   document.getElementById("livePrice").innerText = "";
+      //   console.error("Price fetch failed:", err);
+      // }
     });
     async function fetchOrders() {
       const res = await fetch("http://localhost:5001/orders");
@@ -136,36 +141,68 @@
     }
 
     async function fetchPrediction() {
-        const symbol = document.getElementById("predictSymbol").value.toUpperCase();
-        if (!symbol) {
-            alert("Please enter a stock symbol.");
-            return;
-        }
+  const symbol = document.getElementById("stockSymbol").value.toUpperCase();
+  const resultDiv = document.getElementById("predictionResult");
 
-        try {
-            const res = await fetch(`http://localhost:5001/predict/${symbol}`);
-            const data = await res.json();
+  if (!symbol) {
+    resultDiv.innerText = "Please enter a stock symbol.";
+    return;
+  }
 
-            if (data.error) {
-                document.getElementById("predictionResult").innerText = "Error: " + data.error;
-                return;
-            }
+  resultDiv.innerText = "Fetching prediction... ⏳";
 
-            let resultHTML = `<h3>Predicted Prices for ${symbol}</h3>`;
-            resultHTML += `<p>Current Price: $${data.current_price}</p>`;
-            resultHTML += `<p>Predicted Price (next 7 days): $${data.predicted_price}</p>`;
-            resultHTML += `<p>Expected Change: $${data.expected_change}</p>`;
-            resultHTML += `<p>Percentage Change: ${data.percentage_change}%</p>`;
-            resultHTML += `<p>Trend: ${data.trend}</p>`;
+  try {
+    const res = await fetch(`http://localhost:5001/predict/${symbol}`);
+    const data = await res.json();
 
-            document.getElementById("predictionResult").innerHTML = resultHTML;
+    if (data.error) {
+      resultDiv.innerText = "Error: " + data.error;
+      return;
+    }
 
-        } catch (err) {
-            console.error("Prediction fetch failed:", err);
-            document.getElementById("predictionResult").innerText = "Failed to fetch predictions.";
-        }
-      }
+    let resultHTML = `<h3>Predicted Prices for ${symbol}</h3>`;
+    resultHTML += `<p>Current Price: $${data.current_price}</p>`;
+    resultHTML += `<p>Predicted Price (next 7 days): $${data.predicted_price}</p>`;
+    resultHTML += `<p>Expected Change: $${data.expected_change}</p>`;
+    resultHTML += `<p>Percentage Change: ${data.percentage_change}%</p>`;
+    resultHTML += `<p>Trend: ${data.trend}</p>`;
 
+    resultDiv.innerHTML = resultHTML;
+  } catch (err) {
+    resultDiv.innerText = "Prediction failed.";
+    console.error(err);
+  }
+}
+
+async function retrainModel() {
+  const symbol = document.getElementById("stockSymbol").value.toUpperCase();
+  const resultDiv = document.getElementById("retrainResult");
+
+  if (!symbol) {
+    resultDiv.innerText = "Please enter a stock symbol.";
+    return;
+  }
+
+  resultDiv.innerText = "Training model... ⏳";
+
+  try {
+    const response = await fetch(`http://localhost:5001/train/${symbol}`, {
+      method: "POST"
+    });
+    const data = await response.json();
+
+    if (data.message) {
+      resultDiv.innerText = data.message;
+    } else if (data.error) {
+      resultDiv.innerText = "Error: " + data.error;
+    }
+    document.getElementById("retrainTimestamp").innerText = `Last retrained at ${new Date().toLocaleTimeString()}`;
+    
+  } catch (error) {
+    resultDiv.innerText = "Network error during training.";
+    console.error(error);
+  }
+}
 
     fetchOrders();
   </script>
