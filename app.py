@@ -18,7 +18,7 @@ from sklearn.preprocessing import MinMaxScaler
 import pandas_ta as ta
 from sklearn.metrics import mean_absolute_error
 from tensorflow.keras.models import load_model
-import openai
+import google.generativeai as genai
 
 app = Flask(__name__)
 CORS(app)
@@ -26,7 +26,7 @@ CORS(app)
 load_dotenv()  # Load environment variables from .env file
 # we need to input our MYSQL database here
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
-openai.api_key = os.getenv("OPENAI_API_KEY")
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = True
@@ -514,6 +514,43 @@ def force_train(symbol):
 
     except Exception as e:
         print(f"Retrain error for {symbol}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/nlp_order", methods=["POST"])
+def parse_natural_order():
+    user_input = request.json.get("text")
+    if not user_input:
+        return jsonify({"error": "No input text provided"}), 400
+
+    prompt = f"""
+You are a trading assistant. Convert the following natural language into a JSON object for order placement.
+Fields: order_type, symbol, quantity, limit_price, stop_price, trail_amount (if available).
+
+Example:
+"I want to buy 10 shares of NVDA if it drops below $850" → 
+{{
+  "order_type": "limit",
+  "symbol": "NVDA",
+  "quantity": 10,
+  "limit_price": 850
+}}
+
+Now convert:
+"{user_input}"
+"""
+
+    try:
+        model = genai.GenerativeModel("models/gemini-2.0-flash")  # Correct path
+        response = model.generate_content(prompt)
+        parsed = response.text.strip()
+
+        # Clean up Gemini markdown output
+        if parsed.startswith("```json"):
+            parsed = parsed.replace("```json", "").replace("```", "").strip()
+
+        return jsonify({"parsed": parsed})
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
