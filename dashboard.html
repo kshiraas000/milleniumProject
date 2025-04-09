@@ -22,7 +22,9 @@
             <th>Type</th>
             <th>Quantity</th>
             <th>Latest Price</th>
+            <th>Cost Basis</th>
             <th>Position Value</th>
+            <th>Unrealized PnL</th>
             <th>Trend</th>
             <th>Insight</th>
           </tr>
@@ -75,7 +77,11 @@
           <td>${securityType}</td>
           <td>${item.quantity}</td>
           <td>$${item.latest_price ?? '-'}</td>
+          <td>$${item.cost_basis?.toFixed(2) ?? '-'}</td>
           <td>$${item.position_value ?? '-'}</td>
+          <td style="color: ${item.unrealized_pnl > 0 ? 'green' : item.unrealized_pnl < 0 ? 'red' : 'black'};">
+            $${item.unrealized_pnl?.toFixed(2) ?? '-'}
+          </td>
           <td><button onclick="showTrend('${item.symbol}')">Trend</button></td>
           <td><button onclick="showInsight('${item.symbol}')">Opinion</button></td>
         `;

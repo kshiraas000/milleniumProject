@@ -85,16 +85,24 @@ def get_portfolio():
     portfolio = {}
 
     for order in orders:
+        if order.execution_price is None:
+            continue  # Skip unexecuted orders
+
         key = (order.security_type, order.symbol.upper())
         if key not in portfolio:
             portfolio[key] = {
                 "symbol": order.symbol.upper(),
                 "security_type": order.security_type,
                 "quantity": 0,
-                "latest_price": 0,
-                "position_value": 0
+                "cost_basis": 0,
+                "execution_price": order.execution_price,  # last known execution price
+                "latest_price": None,
+                "position_value": 0,
+                "unrealized_pnl": 0
             }
+
         portfolio[key]["quantity"] += order.quantity
+        portfolio[key]["cost_basis"] += round(order.execution_price * order.quantity, 2)
 
     for key, entry in portfolio.items():
         try:
@@ -103,11 +111,14 @@ def get_portfolio():
             price = stock.history(period="1d", interval="1m")["Close"].iloc[-1]
             entry["latest_price"] = round(price, 2)
             entry["position_value"] = round(price * entry["quantity"], 2)
+            entry["unrealized_pnl"] = round((price * entry["quantity"]) - entry["cost_basis"], 2)
         except:
             entry["latest_price"] = None
             entry["position_value"] = None
+            entry["unrealized_pnl"] = None
 
     return jsonify(list(portfolio.values()))
+
 
 @app.route('/portfolio/opinion/<symbol>', methods=['GET'])
 def get_opinion(symbol):
