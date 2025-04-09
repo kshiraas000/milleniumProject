@@ -19,6 +19,8 @@ import pandas_ta as ta
 from sklearn.metrics import mean_absolute_error
 from tensorflow.keras.models import load_model
 import google.generativeai as genai
+from collections import defaultdict
+from datetime import timedelta
 
 app = Flask(__name__)
 CORS(app)
@@ -377,51 +379,6 @@ def execute_order(order_id):
         return jsonify({"error": str(e)}), 500
 
 
-
-# @app.route('/orders/<int:order_id>/execute', methods=['PUT'])
-# def execute_order(order_id):
-#     order = Order.query.get(order_id)
-#     if not order:
-#         return jsonify({"error": "Order not found"}), 404
-
-#     if order.state not in ["new", "sent"]:
-#         return jsonify({"error": "Order cannot be executed from this state"}), 400
-
-    
-#     # Fetch live price
-#     price_response = get_price(order.symbol)
-#     if isinstance(price_response, tuple):
-#         price_json = price_response[0].json
-#         market_price = price_json.get("price")
-#     else:
-#         return jsonify({"error": "Unable to fetch live price"}), 500
-
-#     if market_price is None:
-#         return jsonify({"error": "Market price unavailable"}), 500
-
-#     filled = False
-#     execution_price = round(market_price, 2)
-   
-
-#     # 🔥 MARKET ORDER logic
-#     if order.order_type == "market":
-#         order.state = "filled"
-#         order.execution_price = execution_price
-#         order.execution_time = datetime.utcnow()
-#         db.session.commit()
-#         return jsonify({
-#             "message": f"Order {order_id} filled.",
-#             "filled": True,
-#             "symbol": order.symbol,
-#             "execution_price": execution_price,
-#             "timestamp": order.execution_time.isoformat(),
-#             "state": order.state
-#         }), 200
-
-#     # fallback (limit/stop/etc not triggered)
-#     return jsonify({"message": "Order not filled. Conditions not met."}), 200
-
-
 @app.route('/orders/<int:order_id>/cancel', methods=['PUT'])
 def cancel_order(order_id):
     order = Order.query.get(order_id)
@@ -613,6 +570,49 @@ Now convert:
 
         return jsonify({"parsed": parsed})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/portfolio/performance', methods=['GET'])
+def get_portfolio_performance():
+    try:
+        # Step 1: Get all filled orders
+        orders = Order.query.filter(Order.state.in_(["filled", "partially filled"])).all()
+
+        if not orders:
+            return jsonify([])
+
+        # Step 2: Aggregate quantities and cost basis per symbol
+        holdings = defaultdict(lambda: {"quantity": 0, "cost_basis": 0})
+        for order in orders:
+            sym = order.symbol.upper()
+            qty = order.quantity
+            if order.execution_price:
+                holdings[sym]["quantity"] += qty
+                holdings[sym]["cost_basis"] += (order.execution_price or 0) * qty
+
+        # Step 3: Download historical prices for the last 30 days
+        start_date = (datetime.today() - timedelta(days=30)).strftime("%Y-%m-%d")
+        symbol_data = {}
+        for symbol in holdings:
+            df = yf.Ticker(symbol).history(start=start_date, interval="1d")
+            if not df.empty:
+                symbol_data[symbol] = df["Close"]
+
+        # Step 4: Calculate total portfolio value for each day
+        combined_df = pd.DataFrame()
+        for symbol, series in symbol_data.items():
+            position = holdings[symbol]["quantity"]
+            combined_df[symbol] = series * position  # Position value per day
+
+        combined_df.fillna(0, inplace=True)
+        combined_df["Total"] = combined_df.sum(axis=1)
+        performance = [{"date": date.strftime("%Y-%m-%d"), "value": round(value, 2)} 
+                       for date, value in combined_df["Total"].items()]
+
+        return jsonify(performance)
+    
+    except Exception as e:
+        print("❌ Error in /portfolio/performance:", e)
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

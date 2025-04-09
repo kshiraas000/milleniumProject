@@ -39,6 +39,11 @@
     </div>
 
     <div class="card" style="margin-top: 30px">
+      <h3>Portfolio Performance Over Time</h3>
+      <canvas id="performanceChart" width="600" height="300"></canvas>
+    </div>
+
+    <div class="card" style="margin-top: 30px">
       <h3>Price Trend</h3>
       <canvas id="trendChart" width="600" height="300"></canvas>
     </div>
@@ -47,12 +52,18 @@
       <h3>Advisor Insight</h3>
       <p id="advisorOpinion">Select a symbol to see insight.</p>
     </div>
+
+    <div class="card" style="margin-top: 30px">
+      <h3>PnL by Symbol</h3>
+      <canvas id="pnlChart" width="600" height="300"></canvas>
+    </div>
   </div>
 
   <script>
     const API_BASE = "http://localhost:5001";
     let pieChart;
     let trendChart;
+    let pnlChart;
 
     async function loadPortfolio() {
       const res = await fetch(`${API_BASE}/portfolio`);
@@ -67,6 +78,8 @@
 
       const pieLabels = [];
       const pieData = [];
+      const pnlLabels = [];
+      const pnlValues = [];
 
       data.forEach(item => {
         const securityType = item.security_type || "stock";
@@ -91,9 +104,14 @@
           pieLabels.push(item.symbol);
           pieData.push(item.position_value);
         }
+        if (item.unrealized_pnl !== null) {
+          pnlLabels.push(item.symbol);
+          pnlValues.push(item.unrealized_pnl);
+        }
       });
 
       drawPieChart(pieLabels, pieData);
+      drawPnlChart(pnlLabels, pnlValues);
     }
 
     function drawPieChart(labels, data) {
@@ -112,6 +130,30 @@
         options: {
           responsive: true,
           maintainAspectRatio: false
+        }
+      });
+    }
+
+    function drawPnlChart(labels, values) {
+      const ctx = document.getElementById('pnlChart').getContext('2d');
+      if (pnlChart) pnlChart.destroy();
+
+      pnlChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Unrealized PnL ($)',
+            data: values,
+            backgroundColor: values.map(v => v >= 0 ? 'rgba(0, 200, 0, 0.6)' : 'rgba(200, 0, 0, 0.6)')
+          }]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
         }
       });
     }
@@ -164,7 +206,50 @@
       }
     }
 
+    async function loadPerformanceChart() {
+      try {
+        const res = await fetch(`${API_BASE}/portfolio/performance`);
+        const data = await res.json();
+
+        if (!Array.isArray(data) || !data.length) {
+          console.warn("No performance data available.");
+          return;
+        }
+
+        const labels = data.map(entry => entry.date);
+        const values = data.map(entry => entry.value);
+
+        const ctx = document.getElementById('performanceChart').getContext('2d');
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Portfolio Value ($)',
+              data: values,
+              borderWidth: 2,
+              fill: true
+            }]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: {
+                beginAtZero: false,
+                ticks: { padding: 5 }
+              }
+            }
+          }
+        });
+      } catch (err) {
+        console.error("Failed to load portfolio performance:", err);
+      }
+    }
+
+
+
     loadPortfolio();
+    loadPerformanceChart(); 
   </script>
 </body>
 </html>
