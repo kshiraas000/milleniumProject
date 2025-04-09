@@ -81,6 +81,14 @@ def get_portfolio():
 @app.route('/portfolio/opinion/<symbol>', methods=['GET'])
 def get_opinion(symbol):
     try:
+        # Grab security type from existing orders
+        entry = next(
+            (order.to_dict() for order in Order.query.filter_by(symbol=symbol.upper()).all()),
+            {}
+        )
+
+        security_type = entry.get("security_type", "stock")
+
         prediction_data = predict_stock(symbol).json
         trend = prediction_data.get("trend")
         pct = prediction_data.get("percentage_change")
@@ -88,24 +96,25 @@ def get_opinion(symbol):
         current = prediction_data.get("current_price")
 
         prompt = f"""
-        You are a financial advisor. Analyze this 7-day forecast for {symbol}:
+        You are a financial advisor. A client is currently holding a {trend} position in a {symbol.upper()} {security_type} security.
+        Analyze the following 7-day forecast and provide a recommendation for next steps:
         - Current Price: {current}
         - Predicted Price in 7 Days: {price}
         - Expected Change: {pct}%
         - Trend: {trend}
 
-        What do you recommend doing (buy, hold, sell)? Justify in 1-2 sentences.
+        If it's a stock, advise whether to hold, sell, or take action (e.g. set stop-limit).
+        If it's an option, consider time decay, strike price behavior, or volatility.
+        Make the advice clear, brief (1–2 sentences), and professional.
         """
 
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        return jsonify({"advice": response.choices[0].message["content"].strip()})
+        model = genai.GenerativeModel("models/gemini-2.0-flash")
+        response = model.generate_content(prompt)
+        return jsonify({"advice": response.text.strip()})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 # Simulated price store (in-memory for now)
 # live_prices = {

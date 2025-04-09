@@ -5,6 +5,7 @@
   <title>Options - Millennium</title>
   <link rel="stylesheet" href="static/styles.css">
   <script src="static/nav.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
@@ -26,6 +27,14 @@
       </select>
       <input type="number" id="limitPriceOption" placeholder="Limit Price (optional)">
       <button onclick="createOptionOrder()">Create Option Order</button>
+
+      <div id="itmStatus" style="margin-top: 10px; font-weight: bold;"></div>
+      <h2>Option Payoff Chart</h2>
+      <canvas id="payoffChart" width="600" height="300"></canvas>
+
+      <h2>Profit Calculator</h2>
+      <div id="profitCalc"></div>
+
       <h2>Black-Scholes Option Price Calculator</h2>
       <input type="number" id="bsSymbolPrice" placeholder="Stock Price (S)">
       <input type="number" id="bsStrikePrice" placeholder="Strike Price (K)">
@@ -59,6 +68,10 @@
   </div>
 
   <script>
+    let currentPrice = null;
+    let currentStrike = null;
+    let currentType = null;
+    let payoffChart;
     document.getElementById("optionSymbol").addEventListener("input", async function () {
       const symbol = this.value.toUpperCase();
       if (!symbol) return;
@@ -76,6 +89,106 @@
         console.error("Price fetch failed:", err);
       }
     });
+
+    document.getElementById("strikePrice").addEventListener("input", updateLivePrice);
+    document.getElementById("expirationDate").addEventListener("change", showExpirationCountdown);
+    document.getElementById("optionType").addEventListener("change", updateLivePrice);
+    document.getElementById("strikePrice").addEventListener("change", updateLivePrice);
+    async function updateLivePrice() {
+      const symbol = document.getElementById("optionSymbol").value.toUpperCase();
+      const strike = parseFloat(document.getElementById("strikePrice").value);
+      const type = document.getElementById("optionType").value;
+
+      if (!symbol || isNaN(strike)) return;
+
+      try {
+        const res = await fetch(`http://localhost:5001/price/${symbol}`);
+        const data = await res.json();
+
+        if (data.price) {
+          currentPrice = data.price;
+          currentStrike = strike;
+          currentType = type;
+
+          document.getElementById("optionLivePrice").innerText = `Live Price: $${data.price.toFixed(2)}`;
+
+          const itm =
+            (type === "call" && data.price > strike) ||
+            (type === "put" && data.price < strike)
+              ? "In the Money"
+              : data.price === strike
+              ? "At the Money"
+              : "Out of the Money";
+
+          document.getElementById("itmStatus").innerText = `Status: ${itm}`;
+
+          renderOptionAnalysis();
+        }
+      } catch (err) {
+        document.getElementById("optionLivePrice").innerText = "";
+        console.error("Price fetch failed:", err);
+      }
+    }
+    function renderOptionAnalysis() {
+      if (currentPrice !== null && currentStrike !== null && currentType) {
+        drawPayoffChart(currentPrice, currentStrike, currentType);
+        showProfitCalc(currentPrice, currentStrike, currentType);
+      }
+    }
+    function showExpirationCountdown() {
+      const expiration = new Date(document.getElementById("expirationDate").value);
+      const now = new Date();
+      const daysLeft = Math.ceil((expiration - now) / (1000 * 60 * 60 * 24));
+      document.getElementById("expirationCountdown").innerText = `${daysLeft} days to expiration`;
+    }
+
+    function drawPayoffChart(price, strike, type) {
+      const prices = Array.from({ length: 61 }, (_, i) => price - 30 + i);
+      const profits = prices.map(p => type === "call"
+        ? Math.max(p - strike, 0)
+        : Math.max(strike - p, 0));
+
+      const ctx = document.getElementById("payoffChart").getContext("2d");
+      if (payoffChart) payoffChart.destroy();
+
+      payoffChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: prices,
+          datasets: [{
+            label: `${type.toUpperCase()} Option Payoff`,
+            data: profits,
+            borderWidth: 2,
+            fill: false
+          }]
+        },
+        options: {
+          scales: {
+            x: { title: { display: true, text: 'Stock Price at Expiration' } },
+            y: { title: { display: true, text: 'Profit ($)' } }
+          }
+        }
+      });
+    }
+
+    function showProfitCalc(price, strike, type) {
+      const premium = 2; // estimate for now
+      const breakeven = type === "call"
+        ? strike + premium
+        : strike - premium;
+
+      const maxGain = type === "call"
+        ? "Unlimited"
+        : `$${(strike - premium).toFixed(2)}`;
+
+      const maxLoss = `$${premium.toFixed(2)}`;
+
+      document.getElementById("profitCalc").innerHTML = `
+        Breakeven: $${breakeven.toFixed(2)}<br>
+        Max Gain: ${maxGain}<br>
+        Max Loss: ${maxLoss}
+      `;
+    }
 
     async function fetchOptionOrders() {
       const res = await fetch("http://localhost:5001/orders");
@@ -125,7 +238,7 @@
         })
       });
 
-      fetchOptionOrders(); // ✅ Refresh table after submission
+      fetchOptionOrders(); 
     }
 
     // Load option orders on page load
