@@ -44,6 +44,68 @@ def home_page():
 def options_page():
     return send_from_directory('.', 'options.html')
 
+@app.route('/test-db')
+def test_db():
+    return jsonify([o.to_dict() for o in Order.query.all()])
+
+@app.route('/portfolio', methods=['GET'])
+def get_portfolio():
+    orders = Order.query.filter(Order.state.in_(["filled", "partially filled"])).all()
+    portfolio = {}
+
+    for order in orders:
+        key = (order.security_type, order.symbol.upper())
+        if key not in portfolio:
+            portfolio[key] = {
+                "symbol": order.symbol.upper(),
+                "security_type": order.security_type,
+                "quantity": 0,
+                "latest_price": 0,
+                "position_value": 0
+            }
+        portfolio[key]["quantity"] += order.quantity
+
+    for key, entry in portfolio.items():
+        try:
+            symbol = entry["symbol"]
+            stock = yf.Ticker(symbol)
+            price = stock.history(period="1d", interval="1m")["Close"].iloc[-1]
+            entry["latest_price"] = round(price, 2)
+            entry["position_value"] = round(price * entry["quantity"], 2)
+        except:
+            entry["latest_price"] = None
+            entry["position_value"] = None
+
+    return jsonify(list(portfolio.values()))
+
+@app.route('/portfolio/opinion/<symbol>', methods=['GET'])
+def get_opinion(symbol):
+    try:
+        prediction_data = predict_stock(symbol).json
+        trend = prediction_data.get("trend")
+        pct = prediction_data.get("percentage_change")
+        price = prediction_data.get("predicted_price")
+        current = prediction_data.get("current_price")
+
+        prompt = f"""
+        You are a financial advisor. Analyze this 7-day forecast for {symbol}:
+        - Current Price: {current}
+        - Predicted Price in 7 Days: {price}
+        - Expected Change: {pct}%
+        - Trend: {trend}
+
+        What do you recommend doing (buy, hold, sell)? Justify in 1-2 sentences.
+        """
+
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        return jsonify({"advice": response.choices[0].message["content"].strip()})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Simulated price store (in-memory for now)
 # live_prices = {
@@ -60,6 +122,10 @@ def options_page():
 #             change = random.uniform(-0.5, 0.5)
 #             live_prices[symbol] = round(max(0, live_prices[symbol] + change), 2)
 #         time.sleep(1)  # update every second
+@app.route('/dashboard')
+def dashboard_page():
+    return send_from_directory('.', 'dashboard.html')
+
 
 def auto_execute_orders():
     while True:

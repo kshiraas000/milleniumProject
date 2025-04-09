@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Millennium Dashboard</title>
+  <link rel="stylesheet" href="static/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="static/nav.js" defer></script>
+</head>
+<body>
+  <div class="nav"></div>
+
+  <div class="main">
+    <h2>Portfolio Dashboard - Millennium</h2>
+
+    <div class="card">
+      <h3>Your Securities</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Type</th>
+            <th>Quantity</th>
+            <th>Latest Price</th>
+            <th>Position Value</th>
+            <th>Trend</th>
+            <th>Insight</th>
+          </tr>
+        </thead>
+        <tbody id="portfolioBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top: 30px; max-width: 360px; height: 260px;">
+      <h3>Portfolio Allocation</h3>
+      <canvas id="pieChart" style="width: 100%; height: auto;"></canvas>
+    </div>
+
+    <div class="card" style="margin-top: 30px">
+      <h3>Price Trend</h3>
+      <canvas id="trendChart" width="600" height="300"></canvas>
+    </div>
+
+    <div class="card" style="margin-top: 30px">
+      <h3>Advisor Insight</h3>
+      <p id="advisorOpinion">Select a symbol to see insight.</p>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "http://localhost:5001";
+    let pieChart;
+    let trendChart;
+
+    async function loadPortfolio() {
+      const res = await fetch(`${API_BASE}/portfolio`);
+      const data = await res.json();
+      const tbody = document.getElementById("portfolioBody");
+      tbody.innerHTML = "";
+
+      if (!data.length) {
+        tbody.innerHTML = '<tr><td colspan="7">No filled or partially filled orders found.</td></tr>';
+        return;
+      }
+
+      const pieLabels = [];
+      const pieData = [];
+
+      data.forEach(item => {
+        const securityType = item.security_type || "stock";
+
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${item.symbol}</td>
+          <td>${securityType}</td>
+          <td>${item.quantity}</td>
+          <td>$${item.latest_price ?? '-'}</td>
+          <td>$${item.position_value ?? '-'}</td>
+          <td><button onclick="showTrend('${item.symbol}')">Trend</button></td>
+          <td><button onclick="showInsight('${item.symbol}')">Opinion</button></td>
+        `;
+        tbody.appendChild(row);
+
+        if (item.position_value) {
+          pieLabels.push(item.symbol);
+          pieData.push(item.position_value);
+        }
+      });
+
+      drawPieChart(pieLabels, pieData);
+    }
+
+    function drawPieChart(labels, data) {
+      const ctx = document.getElementById('pieChart').getContext('2d');
+      if (pieChart) pieChart.destroy();
+
+      pieChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Portfolio Allocation',
+            data: data
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false
+        }
+      });
+    }
+
+    async function showTrend(symbol) {
+      try {
+        const res = await fetch(`${API_BASE}/predict/${symbol}`);
+        if (!res.ok) throw new Error('Prediction request failed');
+        const data = await res.json();
+        if (!data.predictions) return alert("Prediction unavailable");
+
+        const ctx = document.getElementById('trendChart').getContext('2d');
+        if (trendChart) trendChart.destroy();
+
+        trendChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: Object.keys(data.predictions),
+            datasets: [{
+              label: `${symbol} Price Prediction`,
+              data: Object.values(data.predictions),
+              fill: false,
+              borderWidth: 2
+            }]
+          },
+          options: {
+            scales: {
+              y: {
+                beginAtZero: false,
+                suggestedMin: -10,
+                suggestedMax: 10,
+                ticks: { padding: 10 }
+              }
+            }
+          }
+        });
+      } catch (err) {
+        alert("Failed to load trend: " + err);
+      }
+    }
+
+    async function showInsight(symbol) {
+      try {
+        const res = await fetch(`${API_BASE}/portfolio/opinion/${symbol}`);
+        if (!res.ok) throw new Error('Insight request failed');
+        const data = await res.json();
+        document.getElementById("advisorOpinion").innerText = data.advice || "No opinion available.";
+      } catch (err) {
+        document.getElementById("advisorOpinion").innerText = "Failed to load insight.";
+      }
+    }
+
+    loadPortfolio();
+  </script>
+</body>
+</html>
