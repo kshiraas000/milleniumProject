@@ -11,6 +11,12 @@ from dotenv import load_dotenv
 import yfinance as yf
 import numpy as np
 from sklearn.linear_model import LinearRegression
+import pandas as pd
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+from sklearn.preprocessing import MinMaxScaler
+import pandas_ta as ta
+from sklearn.metrics import mean_absolute_error
 
 app = Flask(__name__)
 CORS(app)
@@ -311,48 +317,75 @@ def get_orders():
 
 @app.route('/predict/<symbol>', methods=['GET'])
 def predict_stock(symbol):
-    """
-    Predict stock price movement for the given symbol.
-    """
     try:
-        # Fetch historical stock data
+        # Fetch historical data
         stock = yf.Ticker(symbol)
-        data = stock.history(period="1mo")  # Get 1 year of data
-        if data.empty:
-            return jsonify({"error": "No stock data found"}), 404
-        
-        # Prepare data
-        data = data[['Close']].reset_index()
-        data['Days'] = np.arange(len(data))  # Convert dates to numerical format
+        df = stock.history(period="6mo", interval="1d")
 
-        # Train a simple Linear Regression model
-        model = LinearRegression()
-        X = data[['Days']]
-        y = data['Close']
-        model.fit(X, y)
+        if df.empty or len(df) < 100:
+            return jsonify({"error": "Not enough historical data."}), 404
 
-        # Predict future price (next 7 days)
-        future_days = np.array([len(data) + i for i in range(1, 8)]).reshape(-1, 1)
-        predicted_prices = model.predict(future_days)
-          
-        # Prepare a dictionary for each day's prediction
-        predictions = {}
-        for i, price in enumerate(predicted_prices, start=1):
-            predictions[f"Day {i}"] = round(price, 2)
+        # Calculate technical indicators
+        df['SMA_10'] = ta.sma(df['Close'], length=10)
+        df['EMA_10'] = ta.ema(df['Close'], length=10)
+        df['RSI'] = ta.rsi(df['Close'], length=14)
 
-        # Calculate expected profit/loss
-        current_price = data['Close'].iloc[-1]
-        expected_change = predicted_prices[-1] - current_price
-        percentage_change = (expected_change / current_price) * 100
+        # Drop rows with NaNs
+        df = df.dropna()
+
+        # Use these features
+        feature_cols = ['Close', 'Volume', 'SMA_10', 'EMA_10', 'RSI']
+        data = df[feature_cols].values
+
+        # Normalize
+        scaler = MinMaxScaler()
+        scaled_data = scaler.fit_transform(data)
+
+        # Prepare sequences for training
+        X, y = [], []
+        window_size = 60
+        for i in range(window_size, len(scaled_data) - 7):
+            X.append(scaled_data[i - window_size:i])
+            y.append(scaled_data[i:i+7, 0])  # Predict 7 days of Close only
+
+        X, y = np.array(X), np.array(y)
+
+        # Train LSTM
+        model = Sequential()
+        model.add(LSTM(units=64, return_sequences=False, input_shape=(X.shape[1], X.shape[2])))
+        model.add(Dense(7))  # 7-day forecast
+        model.compile(optimizer='adam', loss='mse')
+        model.fit(X, y, epochs=10, batch_size=32, verbose=0)
+
+        # Prepare last window of input for forecasting
+        last_window = scaled_data[-window_size:]
+        input_seq = np.expand_dims(last_window, axis=0)
+
+        # Predict next 7 days
+        pred_scaled = model.predict(input_seq)[0]
+        pred_combined = np.zeros((7, scaled_data.shape[1]))
+        pred_combined[:, 0] = pred_scaled  # predicted 'Close'
+        pred_actual = scaler.inverse_transform(pred_combined)[:, 0]
+        predictions = [round(p, 2) for p in pred_actual]
+
+        # Compare with recent actual prices (last 7 days)
+        actual_recent = df['Close'].values[-7:]
+        mae = round(mean_absolute_error(actual_recent, predictions), 4)
+
+        current_price = round(df['Close'].iloc[-1], 2)
+        predicted_final = round(predictions[-1], 2)
+        expected_change = round(predicted_final - current_price, 2)
+        pct_change = round((expected_change / current_price) * 100, 2)
 
         return jsonify({
-            "symbol": symbol,
-            "current_price": round(current_price, 2),
-            "predicted_price": round(predicted_prices[-1], 2),
-            "expected_change": round(expected_change, 2),
-            "percentage_change": round(percentage_change, 2),
+            "symbol": symbol.upper(),
+            "current_price": current_price,
+            "predicted_price": predicted_final,
+            "expected_change": expected_change,
+            "percentage_change": pct_change,
             "trend": "profit" if expected_change > 0 else "loss",
-            "predictions": predictions 
+            "predictions": {f"Day {i+1}": float(price) for i, price in enumerate(predictions)},
+            "mae_vs_actuals": mae
         })
 
     except Exception as e:
