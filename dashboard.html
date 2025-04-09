@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard - Millennium</title>
+  <link rel="stylesheet" href="static/styles.css">
+  <script src="static/nav.js" defer></script>
+</head>
+<body>
+  <div class="main">
+    <!-- 📊 Portfolio Snapshot -->
+    <div class="card">
+      <h2>📊 Portfolio Snapshot</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Quantity</th>
+            <th>Avg. Entry Price</th>
+            <th>Current Price</th>
+            <th>Unrealized P/L</th>
+          </tr>
+        </thead>
+        <tbody id="portfolioTableBody">
+          <!-- Portfolio data goes here -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 🧾 Account Summary -->
+    <div class="card">
+      <h2>🧾 Account Summary</h2>
+      <p><strong>Total Orders:</strong> <span id="totalOrders">--</span></p>
+      <p><strong>Open Orders:</strong> <span id="openOrders">--</span></p>
+      <p><strong>Closed Orders:</strong> <span id="closedOrders">--</span></p>
+      <p><strong>Win Rate:</strong> <span id="winRate">--</span></p>
+    </div>
+  </div>
+
+  <script>
+    async function fetchPortfolio() {
+      try {
+        const res = await fetch("http://localhost:5001/portfolio");
+        const portfolio = await res.json();
+        const tbody = document.getElementById("portfolioTableBody");
+        tbody.innerHTML = "";
+
+        portfolio.forEach(position => {
+          const plColor = position.unrealized_pl >= 0 ? "green" : "red";
+          tbody.innerHTML += `
+            <tr>
+              <td>${position.symbol}</td>
+              <td>${position.quantity}</td>
+              <td>$${position.avg_entry_price.toFixed(2)}</td>
+              <td>$${position.current_price.toFixed(2)}</td>
+              <td style="color: ${plColor}; font-weight: bold;">
+                $${position.unrealized_pl.toFixed(2)}
+              </td>
+            </tr>`;
+        });
+
+      } catch (err) {
+        console.error("Failed to fetch portfolio:", err);
+      }
+    }
+
+    async function fetchSummary() {
+      try {
+        const res = await fetch("http://localhost:5001/summary");
+        const summary = await res.json();
+
+        document.getElementById("totalOrders").innerText = summary.total_orders;
+        document.getElementById("openOrders").innerText = summary.open_orders;
+        document.getElementById("closedOrders").innerText = summary.closed_orders;
+        document.getElementById("winRate").innerText = `${summary.win_rate}%`;
+
+      } catch (err) {
+        console.error("Failed to fetch summary:", err);
+      }
+    }
+
+    fetchPortfolio();
+    fetchSummary();
+  </script>
+</body>
+</html>
