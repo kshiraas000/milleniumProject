@@ -45,6 +45,37 @@ def home_page():
 @app.route('/options')
 def options_page():
     return send_from_directory('.', 'options.html')
+@app.route("/options/vol_surface/<symbol>")
+def get_vol_surface(symbol):
+    try:
+        ticker = yf.Ticker(symbol)
+        expirations = ticker.options[:5]  # limit for speed
+        surface = []
+        strikes_set = set()
+
+        for date in expirations:
+            calls = ticker.option_chain(date).calls
+            vol_row = []
+            for _, row in calls.iterrows():
+                strikes_set.add(row["strike"])
+                vol_row.append((row["strike"], row["impliedVolatility"]))
+            surface.append(vol_row)
+
+        strikes = sorted(strikes_set)
+        matrix = []
+
+        for vol_row in surface:
+            row_dict = dict(vol_row)
+            matrix.append([row_dict.get(k, None) for k in strikes])
+
+        return jsonify({
+            "symbol": symbol.upper(),
+            "expirations": expirations,
+            "strikes": strikes,
+            "matrix": matrix
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/test-db')
 def test_db():

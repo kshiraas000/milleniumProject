@@ -2,68 +2,117 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Options - Millennium</title>
+  <title>Options</title>
   <link rel="stylesheet" href="static/styles.css">
   <script src="static/nav.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@1.3.0/dist/chartjs-chart-matrix.min.js"></script>
+  <style>
+    .tab {
+      display: inline-block;
+      margin-right: 20px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .tab.active {
+      color: #007bff;
+      text-decoration: underline;
+    }
+    .tab-content {
+      display: none;
+      margin-top: 20px;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    #volSurfaceChart {
+      margin-top: 40px;
+      margin-bottom: 40px;
+    }
+  </style>
 </head>
 
 <body>
   <div class="main">
     <div class="card">
       <h2>Options Order Entry</h2>
-      <select id="optionType">
-        <option value="call">Call</option>
-        <option value="put">Put</option>
-      </select>
-      <input type="text" id="optionSymbol" placeholder="Underlying Symbol (e.g. AAPL)">
-      <div id="optionLivePrice" style="margin: 10px 0; font-weight: bold;"></div>
-      <input type="number" id="strikePrice" placeholder="Strike Price">
-      <input type="date" id="expirationDate" placeholder="Expiration Date">
-      <input type="number" id="optionQuantity" placeholder="Contracts (x100)">
-      <select id="optionOrderType">
-        <option value="market">Market</option>
-        <option value="limit">Limit</option>
-      </select>
-      <input type="number" id="limitPriceOption" placeholder="Limit Price (optional)">
-      <button onclick="createOptionOrder()">Create Option Order</button>
+      <div>
+        <span class="tab active" onclick="switchTab('entry')">Order Entry</span>
+        <span class="tab" onclick="switchTab('strategy')">Strategy Builder</span>
+        <span class="tab" onclick="switchTab('surface')">Volatility Surface</span>
+        <span class="tab" onclick="switchTab('sentiment')">Sentiment Insights</span>
+      </div>
+      <div id="entry" class="tab-content active">
+        <select id="optionType">
+          <option value="call">Call</option>
+          <option value="put">Put</option>
+        </select>
+        <input type="text" id="optionSymbol" placeholder="Underlying Symbol (e.g. AAPL)">
+        <div id="optionLivePrice" style="margin: 10px 0; font-weight: bold;"></div>
+        <input type="number" id="strikePrice" placeholder="Strike Price">
+        <input type="date" id="expirationDate" placeholder="Expiration Date">
+        <input type="number" id="optionQuantity" placeholder="Contracts (x100)">
+        <select id="optionOrderType">
+          <option value="market">Market</option>
+          <option value="limit">Limit</option>
+        </select>
+        <input type="number" id="limitPriceOption" placeholder="Limit Price (optional)">
+        <button onclick="createOptionOrder()">Create Option Order</button>
+  
+        <div id="itmStatus" style="margin-top: 10px; font-weight: bold;"></div>
+        <h2>Option Payoff Chart</h2>
+        <canvas id="payoffChart" width="600" height="300"></canvas>
+  
+        <h2>Profit Calculator</h2>
+        <div id="profitCalc"></div>
+  
+        <h2>Black-Scholes Option Price Calculator</h2>
+        <input type="number" id="bsSymbolPrice" placeholder="Stock Price (S)">
+        <input type="number" id="bsStrikePrice" placeholder="Strike Price (K)">
+        <input type="number" id="bsTime" placeholder="Time to Expiration (Years)">
+        <input type="number" id="bsRate" placeholder="Risk-Free Rate (r, decimal)">
+        <input type="number" id="bsVolatility" placeholder="Volatility (σ, decimal)">
+        <select id="bsOptionType">
+          <option value="call">Call</option>
+          <option value="put">Put</option>
+        </select>
+        <button onclick="calculateBS()">Calculate</button>
+        <div id="bsResult" style="margin-top: 10px; font-weight: bold;"></div>
+  
+        <h2>Recent Option Orders</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Type</th>
+              <th>Symbol</th>
+              <th>Strike</th>
+              <th>Expiration</th>
+              <th>Qty</th>
+              <th>Limit</th>
+              <th>State</th>
+            </tr>
+          </thead>
+          <tbody id="optionsTableBody"></tbody>
+        </table>
+      </div>
+      <div id="strategy" class="tab-content">
+        <label for="volSymbol">Underlying Symbol:</label>
+        <input type="text" id="volSymbol" placeholder="e.g. AAPL" />
+        <button onclick="loadVolSurface()">Load Surface</button>
+        <canvas id="volSurfaceChart" width="700" height="400"></canvas>
+        <div id="volError" style="color: red; margin-top: 10px;"></div>
+      </div>
 
-      <div id="itmStatus" style="margin-top: 10px; font-weight: bold;"></div>
-      <h2>Option Payoff Chart</h2>
-      <canvas id="payoffChart" width="600" height="300"></canvas>
+      <div id="surface" class="tab-content">
+        <p>Coming soon: visualize implied volatility across strikes and expirations.</p>
+        <canvas id="volSurfaceChart" width="600" height="400"></canvas>
+      </div>
 
-      <h2>Profit Calculator</h2>
-      <div id="profitCalc"></div>
-
-      <h2>Black-Scholes Option Price Calculator</h2>
-      <input type="number" id="bsSymbolPrice" placeholder="Stock Price (S)">
-      <input type="number" id="bsStrikePrice" placeholder="Strike Price (K)">
-      <input type="number" id="bsTime" placeholder="Time to Expiration (Years)">
-      <input type="number" id="bsRate" placeholder="Risk-Free Rate (r, decimal)">
-      <input type="number" id="bsVolatility" placeholder="Volatility (σ, decimal)">
-      <select id="bsOptionType">
-        <option value="call">Call</option>
-        <option value="put">Put</option>
-      </select>
-      <button onclick="calculateBS()">Calculate</button>
-      <div id="bsResult" style="margin-top: 10px; font-weight: bold;"></div>
-
-      <h2>Recent Option Orders</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Type</th>
-            <th>Symbol</th>
-            <th>Strike</th>
-            <th>Expiration</th>
-            <th>Qty</th>
-            <th>Limit</th>
-            <th>State</th>
-          </tr>
-        </thead>
-        <tbody id="optionsTableBody"></tbody>
-      </table>
+      <div id="sentiment" class="tab-content">
+        <p>Coming soon: AI-generated sentiment analysis for selected options.</p>
+        <div id="sentimentOutput"></div>
+      </div>
     </div>
   </div>
 
@@ -128,6 +177,12 @@
         document.getElementById("optionLivePrice").innerText = "";
         console.error("Price fetch failed:", err);
       }
+    }
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      document.querySelector(`.tab[onclick*="${tabId}"]`).classList.add('active');
     }
     function renderOptionAnalysis() {
       if (currentPrice !== null && currentStrike !== null && currentType) {
@@ -350,7 +405,86 @@
       }
     }
 
+    async function loadVolSurface() {
+      const symbol = document.getElementById("volSymbol").value.toUpperCase();
+      const canvas = document.getElementById("volSurfaceChart");
+      const ctx = canvas.getContext("2d");
+      document.getElementById("volError").innerText = "";
 
+      try {
+        const res = await fetch(`http://localhost:5001/options/vol_surface/${symbol}`);
+        const data = await res.json();
+        if (!data.matrix) throw new Error(data.error || "Failed to load volatility data");
+
+        const matrixData = [];
+        for (let i = 0; i < data.expirations.length; i++) {
+          for (let j = 0; j < data.strikes.length; j++) {
+            matrixData.push({
+              x: data.strikes[j],
+              y: data.expirations[i],
+              v: data.matrix[i][j]
+            });
+          }
+        }
+
+        const vols = matrixData.map(d => d.v);
+        const minVol = Math.min(...vols);
+        const maxVol = Math.max(...vols);
+
+      if (window.volHeatmap) window.volHeatmap.destroy();
+
+      window.volHeatmap = new Chart(ctx, {
+        type: 'matrix',
+        data: {
+          datasets: [{
+            label: 'Implied Volatility',
+            data: matrixData,
+            backgroundColor(ctx) {
+              const v = ctx.raw.v;
+              const t = (v - minVol) / Math.max(1e-6, maxVol - minVol);
+              const red = Math.floor(255 * t);
+              const green = 255 - red;
+              return `rgb(${red}, ${green}, 100)`;
+            },
+            width: 20,
+            height: 40
+          }]
+        },
+        options: {
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const { x, y, v } = ctx.raw;
+                  return `Strike: ${x}, Exp: ${y}, IV: ${v.toFixed(2)}%`;
+                }
+              }
+            },
+            title: {
+              display: true,
+              text: `${symbol} Implied Volatility Surface`
+            }
+          },  
+          scales: {
+            x: {
+              title: { display: true, text: 'Strike Price' },
+              type: 'linear',
+              ticks: { autoSkip: true, maxTicksLimit: 15, padding: 10 }
+            },
+            y: {
+              title: { display: true, text: 'Expiration Date' },
+              offset: true,
+              type: 'category',
+              labels: data.expirations,
+            }
+          }
+        }
+      });
+      } catch (err) {
+        document.getElementById("volError").innerText = err.message;
+        console.error(err);
+      }
+    }
   </script>
 </body>
 </html>
