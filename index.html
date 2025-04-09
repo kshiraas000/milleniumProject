@@ -8,10 +8,10 @@
     
 <body>
     <div class="main">
-    <div class="header"><h2>Order Entry System</h2></div>
     
-
-    <div class="form-group">
+    <div class="card">
+      <h2>Order Entry System</h2>
+      
         <select id="orderCategory">
             <option value="market">Market</option>
             <option value="limit">Limit</option>
@@ -35,6 +35,13 @@
     </div>
 
     <div class="card">
+      <h2>AI Trading Assistant</h2>
+      <input type="text" id="nlpInput" placeholder="e.g. I want to buy 10 shares of AAPL at $180">
+      <button onclick="convertOrder()">Convert</button>
+      <pre id="nlpOutput" style="margin-top: 10px; white-space: pre-wrap;"></pre>
+    </div>
+
+    <div class="card">
       <h2>Stock Prediction</h2>
       <input type="text" id="stockSymbol" placeholder="Enter Stock Symbol">
       <div style="margin-top: 10px;">
@@ -46,22 +53,20 @@
       <p id="retrainTimestamp" style="color: #999; font-size: 0.9em;"></p>
     </div>
 
-    <div class="card">
-      <h2>AI Trading Assistant</h2>
-      <input type="text" id="nlpInput" placeholder="e.g. I want to buy 10 shares of AAPL at $180">
-      <button onclick="convertOrder()">Convert</button>
-      <pre id="nlpOutput" style="margin-top: 10px; white-space: pre-wrap;"></pre>
-    </div>
+    <div id="executionPopup" style="display: none; position: fixed; top: 20px; right: 20px; background: #d1f7c4; padding: 15px; border-radius: 10px; box-shadow: 0 0 10px #ccc; font-size: 0.95rem;"></div>
 
     <table>
       <thead>
         <tr>
           <th>ID</th>
-          <th>Type</th>
+          <th>Order Category</th>
+          <th>Order Type</th>
           <th>Symbol</th>
           <th>Quantity</th>
           <th>State</th>
           <th>Actions</th>
+          <th>Execution Price</th>
+          <th>Execution Time</th>
         </tr>
       </thead>
       <tbody id="ordersTableBody"></tbody>
@@ -102,6 +107,7 @@
         body.innerHTML += `
           <tr>
             <td>${order.id}</td>
+            <td>${order.order_category}</td>
             <td>${order.order_type}</td>
             <td>${order.symbol}</td>
             <td>${order.quantity}</td>
@@ -110,12 +116,15 @@
               <button onclick="executeOrder(${order.id})">Execute</button>
               <button onclick="cancelOrder(${order.id})">Cancel</button>
             </td>
+            <td>$${order.execution_price || '-'}</td>
+            <td>${order.execution_time ? new Date(order.execution_time).toLocaleString() : '-'}</td>
           </tr>`;
       });
     }
 
     async function createOrder() {
-        const order_type = document.getElementById("orderCategory").value;
+        const order_type = document.getElementById("orderType").value;       // buy/sell
+        const order_category = document.getElementById("orderCategory").value; // market/limit/etc
         const symbol = document.getElementById("symbol").value;
         const quantity = parseInt(document.getElementById("quantity").value);
         const limit_price = parseFloat(document.getElementById("limitPrice").value) || null;
@@ -126,22 +135,57 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-            order_type,
-            symbol,
-            quantity,
-            limit_price,
-            stop_price,
-            trail_amount
+                order_type,
+                order_category,
+                symbol,
+                quantity,
+                limit_price,
+                stop_price,
+                trail_amount
             })
         });
 
         fetchOrders();
     }
 
+
+    // async function executeOrder(id) {
+    //   await fetch(`http://localhost:5001/orders/${id}/execute`, { method: "PUT" });
+    //   fetchOrders();
+    // } 
+
     async function executeOrder(id) {
-      await fetch(`http://localhost:5001/orders/${id}/execute`, { method: "PUT" });
-      fetchOrders();
+      try {
+        const res = await fetch(`http://localhost:5001/orders/${id}/execute`, {
+          method: "PUT"
+        });
+        const data = await res.json();
+
+        let message = "";
+
+        if (data.filled) {
+          message = `✅ Order Filled!\nSymbol: ${data.symbol}\nPrice: $${data.execution_price}\nTime: ${new Date(data.timestamp).toLocaleString()}`;
+        } else {
+          message = data.message || "⚠️ Order was not filled.";
+        }
+
+        showExecutionPopup(message);
+        fetchOrders();
+      } catch (err) {
+        console.error("Execution failed:", err);
+        showExecutionPopup("❌ Execution failed due to server error.");
+      }
     }
+
+    function showExecutionPopup(message) {
+      const popup = document.getElementById("executionPopup");
+      popup.innerText = message;
+      popup.style.display = "block";
+      setTimeout(() => {
+        popup.style.display = "none";
+      }, 4000);
+    }
+
 
     async function cancelOrder(id) {
       await fetch(`http://localhost:5001/orders/${id}/cancel`, { method: "PUT" });
@@ -149,38 +193,38 @@
     }
 
     async function fetchPrediction() {
-  const symbol = document.getElementById("stockSymbol").value.toUpperCase();
-  const resultDiv = document.getElementById("predictionResult");
+      const symbol = document.getElementById("stockSymbol").value.toUpperCase();
+      const resultDiv = document.getElementById("predictionResult");
 
-  if (!symbol) {
-    resultDiv.innerText = "Please enter a stock symbol.";
-    return;
-  }
+      if (!symbol) {
+        resultDiv.innerText = "Please enter a stock symbol.";
+        return;
+      }
 
-  resultDiv.innerText = "Fetching prediction... ⏳";
+      resultDiv.innerText = "Fetching prediction... ⏳";
 
-  try {
-    const res = await fetch(`http://localhost:5001/predict/${symbol}`);
-    const data = await res.json();
+      try {
+        const res = await fetch(`http://localhost:5001/predict/${symbol}`);
+        const data = await res.json();
 
-    if (data.error) {
-      resultDiv.innerText = "Error: " + data.error;
-      return;
+        if (data.error) {
+          resultDiv.innerText = "Error: " + data.error;
+          return;
+        }
+
+        let resultHTML = `<h3>Predicted Prices for ${symbol}</h3>`;
+        resultHTML += `<p>Current Price: $${data.current_price}</p>`;
+        resultHTML += `<p>Predicted Price (next 7 days): $${data.predicted_price}</p>`;
+        resultHTML += `<p>Expected Change: $${data.expected_change}</p>`;
+        resultHTML += `<p>Percentage Change: ${data.percentage_change}%</p>`;
+        resultHTML += `<p>Trend: ${data.trend}</p>`;
+
+        resultDiv.innerHTML = resultHTML;
+      } catch (err) {
+        resultDiv.innerText = "Prediction failed.";
+        console.error(err);
+      }
     }
-
-    let resultHTML = `<h3>Predicted Prices for ${symbol}</h3>`;
-    resultHTML += `<p>Current Price: $${data.current_price}</p>`;
-    resultHTML += `<p>Predicted Price (next 7 days): $${data.predicted_price}</p>`;
-    resultHTML += `<p>Expected Change: $${data.expected_change}</p>`;
-    resultHTML += `<p>Percentage Change: ${data.percentage_change}%</p>`;
-    resultHTML += `<p>Trend: ${data.trend}</p>`;
-
-    resultDiv.innerHTML = resultHTML;
-  } catch (err) {
-    resultDiv.innerText = "Prediction failed.";
-    console.error(err);
-  }
-}
 
 async function retrainModel() {
   const symbol = document.getElementById("stockSymbol").value.toUpperCase();
@@ -254,7 +298,7 @@ async function convertOrder() {
     const data = await res.json();
 
     if (data.error) {
-      output.innerText = "❌ " + data.error;
+      output.innerText = data.error;
       return;
     }
 
@@ -263,6 +307,9 @@ async function convertOrder() {
 
     // 🔁 Auto-fill form fields
     if (parsed.order_type) document.getElementById("orderCategory").value = parsed.order_type;
+    if (parsed.order_category) document.getElementById("orderCategory").value = parsed.order_category;
+    if (parsed.order_type) document.getElementById("orderType").value = parsed.order_type;
+
     if (parsed.symbol) document.getElementById("symbol").value = parsed.symbol;
     if (parsed.quantity) document.getElementById("quantity").value = parsed.quantity;
     if (parsed.limit_price) document.getElementById("limitPrice").value = parsed.limit_price;
