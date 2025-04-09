@@ -45,86 +45,6 @@ def options_page():
     return send_from_directory('.', 'options.html')
 
 
-def auto_execute_orders():
-    while True:
-        time.sleep(1)
-        with app.app_context():
-            open_orders = Order.query.filter(Order.state.in_(["new", "sent"])).all()
-            for order in open_orders:
-                symbol = order.symbol.upper()
-                if order.security_type == "stock":
-                    # Just like your get_price logic
-                    market_price = fetch_stock_price(symbol)  # or inline yfinance code
-                    if market_price is None:
-                        continue
-                elif order.security_type == "option":
-                    # If it’s an option, we look up the *option premium*
-                    #  - order.option_type: 'call' or 'put'
-                    #  - order.strike_price
-                    #  - order.expiration_date
-                    market_price = fetch_option_price(symbol, 
-                                                      order.option_type, 
-                                                      order.strike_price, 
-                                                      order.expiration_date)
-                    if market_price is None:
-                        continue
-                else:
-                    continue
-
-                # Now do your same logic
-                should_execute = False
-                if order.order_type == "market":
-                    should_execute = True
-                elif order.order_type == "limit":
-                    if (order.limit_price is not None and
-                        ((order.symbol and order.state == "new") and
-                         ((order.order_type == "limit" and market_price <= order.limit_price and order.order_type == "buy") or
-                          (market_price >= order.limit_price and order.order_type == "sell")))):
-                        should_execute = True
-                elif order.order_type == "stop":
-                    if (order.stop_price is not None and
-                        ((market_price >= order.stop_price and order.order_type == "buy") or
-                         (market_price <= order.stop_price and order.order_type == "sell"))):
-                        should_execute = True
-                elif order.order_type == "stop-limit":
-                    if order.stop_price is not None and order.limit_price is not None:
-                        if order.order_type == "buy":
-                            # Trigger if market_price >= stop_price
-                            if market_price >= order.stop_price:
-                                # Then fill if now <= limit_price
-                                if market_price <= order.limit_price:
-                                    should_execute = True
-
-                        elif order.order_type == "sell":
-                            # Trigger if market_price <= stop_price
-                            if market_price <= order.stop_price:
-                                # Then fill if now >= limit_price
-                                if market_price >= order.limit_price:
-                                    should_execute = True
-
-                                if should_execute:
-                                    order.state = "filled"
-                                    db.session.commit()
-                elif order.order_type == "trailing-stop":
-                    if order.trail_amount is not None:
-                        # 1) Initialize trailing_anchor if None
-                        if order.trailing_anchor is None:
-                            # First time we see the order, set anchor to the current price
-                            order.trailing_anchor = market_price
-                            db.session.commit()  # Save it so it persists
-
-                        # 2) If market hits a new high, we move the trailing_anchor up
-                        if market_price > order.trailing_anchor:
-                            order.trailing_anchor = market_price
-                            db.session.commit()
-
-                        # 3) Compute the actual stop level
-                        trailing_stop_price = order.trailing_anchor - order.trail_amount
-
-                        # 4) If the current price is now below the trailing stop, fill the order
-                        if market_price <= trailing_stop_price:
-                            should_execute = True
-
 def fetch_option_price(symbol, option_type, strike, expiration_date):
     """
     Returns the latest option premium (midpoint, ask, last, or whatever you prefer).
@@ -159,10 +79,12 @@ def fetch_option_price(symbol, option_type, strike, expiration_date):
         return None
 
 
+
 @app.route('/price/<symbol>')
 def get_price(symbol):
     try:
         stock = yf.Ticker(symbol)
+        # 1-minute resolution is the finest granularity yfinance supports
         df = stock.history(period="1d", interval="1m") 
         if df.empty:
             return jsonify({"error": "Symbol not found"}), 404
@@ -179,13 +101,13 @@ def get_price(symbol):
 class Order(db.Model):
     __tablename__ = 'orders'
     id = db.Column(db.Integer, primary_key=True)
-    security_type = db.Column(db.String(10), default='stock')  # NEW
+    security_type = db.Column(db.String(10), default='stock')
     order_type = db.Column(db.String(20), nullable=False)
+    order_category = db.Column(db.String(20), nullable=False)
     symbol = db.Column(db.String(10), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
 
-    # NEW fields for options
-    option_type = db.Column(db.String(4), nullable=True)       # 'call' or 'put'
+    option_type = db.Column(db.String(4), nullable=True)
     strike_price = db.Column(db.Float, nullable=True)
     expiration_date = db.Column(db.Date, nullable=True)
 
@@ -196,12 +118,16 @@ class Order(db.Model):
     state = db.Column(db.String(20), nullable=False, default='new')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    execution_price = db.Column(db.Float, nullable=True)
+    execution_time = db.Column(db.DateTime, nullable=True)
+
 
     def to_dict(self):
         return {
             "id": self.id,
             "security_type": self.security_type,
             "order_type": self.order_type,
+            "order_category": self.order_category,
             "symbol": self.symbol,
             "quantity": self.quantity,
             "option_type": self.option_type,
@@ -211,7 +137,9 @@ class Order(db.Model):
             "stop_price": self.stop_price,
             "trail_amount": self.trail_amount,
             "state": self.state,
-            "created_at": self.created_at.isoformat()
+            "created_at": self.created_at.isoformat(),
+            "execution_price": self.execution_price,
+            "execution_time": self.execution_time.isoformat() if self.execution_time else None
         }
 
 # Endpoint to enter a new order
@@ -229,6 +157,7 @@ def create_order():
     new_order = Order(
         security_type=data.get('security_type', 'stock'),
         order_type=data['order_type'],
+        order_category=data['order_category'],
         symbol=data['symbol'],
         quantity=data['quantity'],
         limit_price=data.get('limit_price'),
@@ -237,46 +166,159 @@ def create_order():
         option_type=data.get('option_type'),
         strike_price=data.get('strike_price'),
         expiration_date=expiration_date,
-        state=data.get('state', 'new')
+        state=data.get('state', 'new'),
+        # execution_price = db.Column(db.Float, nullable=True),
+        # execution_time = db.Column(db.DateTime, nullable=True)
     )
 
     db.session.add(new_order)
     db.session.commit()
     return jsonify(new_order.to_dict()), 201
 
+import traceback
+
 @app.route('/orders/<int:order_id>/execute', methods=['PUT'])
 def execute_order(order_id):
-    order = Order.query.get(order_id)
-    if not order:
-        return jsonify({"error": "Order not found"}), 404
+    try:
+        order = Order.query.get(order_id)
+        if not order:
+            return jsonify({"error": "Order not found"}), 404
 
-    if order.state not in ["new", "sent"]:
-        return jsonify({"error": "Order cannot be executed from this state"}), 400
+        print(f"🔍 Order fetched: {order.to_dict()}")
 
-    # Simulating execution with a random state change
-    execution_state = choice(["filled", "partially filled"])
-    order.state = execution_state
-    db.session.commit()
-    return jsonify({"message": f"Order {order_id} has been {execution_state}"}), 200
+        if order.state not in ["new", "sent"]:
+            print("🚫 Order state is not executable")
+            return jsonify({"error": "Order cannot be executed from this state"}), 400
+        try:
+            stock = yf.Ticker(order.symbol)
+            df = stock.history(period="1d", interval="1m")
+            if df.empty:
+                return jsonify({"error": "Symbol not found"}), 404
+            market_price = df["Close"].iloc[-1]
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
-@app.route('/orders/<int:order_id>/state', methods=['PUT'])
-def change_order_state(order_id):
-    order = Order.query.get(order_id)
-    if not order:
-        return jsonify({"error": "Order not found"}), 404
+        execution_price = round(market_price, 2)
+        filled = False
 
-    data = request.get_json()
-    new_state = data.get('state')
+        if order.order_category == "market":
+            filled = True
+            order.state = "filled"
 
-    # Valid states
-    valid_states = ["new", "sent", "filled", "partially filled", "canceled", "rejected"]
+        elif order.order_category == "limit":
+            if order.order_type == "buy" and market_price <= order.limit_price:
+                filled = True
+                order.state = "filled"
+            elif order.order_type == "sell" and market_price >= order.limit_price:
+                filled = True
+                order.state = "filled"
 
-    if new_state not in valid_states:
-        return jsonify({"error": f"Invalid state. Valid states: {valid_states}"}), 400
+        elif order.order_category == "stop":
+            if order.order_type == "buy" and market_price >= order.stop_price:
+                filled = True
+                order.state = "filled"
+            elif order.order_type == "sell" and market_price <= order.stop_price:
+                filled = True
+                order.state = "filled"
 
-    order.state = new_state
-    db.session.commit()
-    return jsonify({"message": f"Order {order_id} updated to {new_state}"}), 200
+        elif order.order_category == "stop-limit":
+            # Stop condition met?
+            if order.order_type == "buy" and market_price >= order.stop_price:
+                if market_price <= order.limit_price:
+                    filled = True
+                    order.state = "filled"
+            elif order.order_type == "sell" and market_price <= order.stop_price:
+                if market_price >= order.limit_price:
+                    filled = True
+                    order.state = "filled"
+
+        elif order.order_category == "trailing-stop":
+            if order.trail_amount is not None:
+                # Initialize anchor if not yet set
+                if not hasattr(order, 'trailing_anchor') or order.trailing_anchor is None:
+                    order.trailing_anchor = market_price
+                else:
+                    if order.order_type == "sell":
+                        if market_price > order.trailing_anchor:
+                            order.trailing_anchor = market_price
+                        stop_trigger = order.trailing_anchor - order.trail_amount
+                        if market_price <= stop_trigger:
+                            filled = True
+                            order.state = "filled"
+                    elif order.order_type == "buy":
+                        if market_price < order.trailing_anchor:
+                            order.trailing_anchor = market_price
+                        stop_trigger = order.trailing_anchor + order.trail_amount
+                        if market_price >= stop_trigger:
+                            filled = True
+                            order.state = "filled"
+
+        if filled:
+            order.execution_price = execution_price
+            order.execution_time = datetime.utcnow()
+            db.session.commit()
+            print(f"✅ Filled at ${execution_price}")
+            return jsonify({
+                "message": f"Order {order_id} filled.",
+                "filled": True,
+                "symbol": order.symbol,
+                "execution_price": execution_price,
+                "timestamp": order.execution_time.isoformat(),
+                "state": order.state
+            }), 200
+
+        return jsonify({"message": "Order not filled."}), 200
+
+    except Exception as e:
+        print("❌ EXCEPTION THROWN DURING EXECUTION:")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+
+# @app.route('/orders/<int:order_id>/execute', methods=['PUT'])
+# def execute_order(order_id):
+#     order = Order.query.get(order_id)
+#     if not order:
+#         return jsonify({"error": "Order not found"}), 404
+
+#     if order.state not in ["new", "sent"]:
+#         return jsonify({"error": "Order cannot be executed from this state"}), 400
+
+    
+#     # Fetch live price
+#     price_response = get_price(order.symbol)
+#     if isinstance(price_response, tuple):
+#         price_json = price_response[0].json
+#         market_price = price_json.get("price")
+#     else:
+#         return jsonify({"error": "Unable to fetch live price"}), 500
+
+#     if market_price is None:
+#         return jsonify({"error": "Market price unavailable"}), 500
+
+#     filled = False
+#     execution_price = round(market_price, 2)
+   
+
+#     # 🔥 MARKET ORDER logic
+#     if order.order_type == "market":
+#         order.state = "filled"
+#         order.execution_price = execution_price
+#         order.execution_time = datetime.utcnow()
+#         db.session.commit()
+#         return jsonify({
+#             "message": f"Order {order_id} filled.",
+#             "filled": True,
+#             "symbol": order.symbol,
+#             "execution_price": execution_price,
+#             "timestamp": order.execution_time.isoformat(),
+#             "state": order.state
+#         }), 200
+
+#     # fallback (limit/stop/etc not triggered)
+#     return jsonify({"message": "Order not filled. Conditions not met."}), 200
+
 
 @app.route('/orders/<int:order_id>/cancel', methods=['PUT'])
 def cancel_order(order_id):
@@ -476,5 +518,5 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     # Thread(target=simulate_price_feed, daemon=True).start()
-    Thread(target=auto_execute_orders, daemon=True).start()
+    #Thread(target=auto_execute_orders, daemon=True).start()
     app.run(debug=True, port=5001)
