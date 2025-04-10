@@ -38,9 +38,8 @@
       <h2>Options Order Entry</h2>
       <div>
         <span class="tab active" onclick="switchTab('entry')">Order Entry</span>
-        <span class="tab" onclick="switchTab('strategy')">Strategy Builder</span>
-        <span class="tab" onclick="switchTab('surface')">Volatility Surface</span>
-        <span class="tab" onclick="switchTab('sentiment')">Sentiment Insights</span>
+        <span class="tab" onclick="switchTab('strategy')">Volatility Surface</span>
+        <span class="tab" onclick="switchTab('surface')">P&L Surface</span>
       </div>
       <div id="entry" class="tab-content active">
         <select id="optionType">
@@ -105,14 +104,37 @@
       </div>
 
       <div id="surface" class="tab-content">
-        <p>Coming soon: visualize implied volatility across strikes and expirations.</p>
-        <canvas id="volSurfaceChart" width="600" height="400"></canvas>
+        <div id="pnlSurface">
+          <h3>P&L Volatility Surface</h3>
+          <label>Underlying Symbol:</label>
+          <input type="text" id="pnlSymbol" placeholder="e.g. AAPL" oninput="fetchPnlLivePrice()">
+          <div id="pnlLivePrice" style="font-weight: bold; margin-bottom: 10px;"></div>
+          <label>Spot Price (S):</label>
+          <input type="number" id="pnlS" step="0.01"><br>
+        
+          <label>Strike Price (K):</label>
+          <input type="number" id="pnlK" step="0.01"><br>
+        
+          <label>Time to Expiration (in years):</label>
+          <input type="number" id="pnlT" step="0.01"><br>
+        
+          <label>Risk-Free Rate (r):</label>
+          <input type="number" id="pnlR" step="0.0001"><br>
+        
+          <label>Premium Paid:</label>
+          <input type="number" id="pnlPremium" step="0.01"><br>
+        
+          <label>Option Type:</label>
+          <select id="pnlType">
+            <option value="call">Call</option>
+            <option value="put">Put</option>
+          </select><br><br>
+        
+          <button onclick="renderPnlSurface()">Generate Surface</button>
+          <canvas id="pnlSurfaceChart" width="800" height="400"></canvas>
+        </div>
       </div>
-
-      <div id="sentiment" class="tab-content">
-        <p>Coming soon: AI-generated sentiment analysis for selected options.</p>
-        <div id="sentimentOutput"></div>
-      </div>
+    </div>
     </div>
   </div>
 
@@ -178,6 +200,100 @@
         console.error("Price fetch failed:", err);
       }
     }
+    function renderPnlSurface() {
+      const S0 = parseFloat(document.getElementById("pnlS").value);
+      const K = parseFloat(document.getElementById("pnlK").value);
+      const T = parseFloat(document.getElementById("pnlT").value);
+      const r = parseFloat(document.getElementById("pnlR").value);
+      const premium = parseFloat(document.getElementById("pnlPremium").value);
+      const type = document.getElementById("pnlType").value;
+
+      const spotPrices = [];
+      for (let s = S0 * 0.5; s <= S0 * 1.5; s += (S0 * 0.05)) spotPrices.push(parseFloat(s.toFixed(2)));
+
+      const volatilities = [];
+      for (let v = 0.1; v <= 0.8; v += 0.05) volatilities.push(parseFloat(v.toFixed(2)));
+
+      const data = [];
+      for (let i = 0; i < volatilities.length; i++) {
+        for (let j = 0; j < spotPrices.length; j++) {
+          const S = spotPrices[j];
+          const sigma = volatilities[i];
+          const d1 = (Math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * Math.sqrt(T));
+          const d2 = d1 - sigma * Math.sqrt(T);
+          const phi = x => Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+          const cdf = x => (1 + erf(x / Math.sqrt(2))) / 2;
+          const erf = x => {
+            const sign = x < 0 ? -1 : 1;
+            x = Math.abs(x);
+            const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+            const t = 1 / (1 + p * x);
+            const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+            return sign * y;
+          };
+
+          let value;
+          if (type === "call") {
+            value = S * cdf(d1) - K * Math.exp(-r * T) * cdf(d2);
+          } else {
+            value = K * Math.exp(-r * T) * cdf(-d2) - S * cdf(-d1);
+          }
+
+          const pnl = value - premium;
+
+          data.push({ x: spotPrices[j], y: volatilities[i], v: pnl });
+        }
+      }
+
+      const ctx = document.getElementById("pnlSurfaceChart").getContext("2d");
+      if (window.pnlHeatmap) window.pnlHeatmap.destroy();
+
+      window.pnlHeatmap = new Chart(ctx, {
+        type: 'matrix',
+        data: {
+          datasets: [{
+            label: 'Profit/Loss',
+            data: data,
+            backgroundColor(ctx) {
+              const v = ctx.raw.v;
+              const red = v < 0 ? 255 : 0;
+              const green = v >= 0 ? 200 : 0;
+              return `rgb(${red}, ${green}, 50)`;
+            },
+            width: 20,
+            height: 40
+          }]
+        },
+        options: {
+          plugins: {
+            title: {
+              display: true,
+              text: 'P&L Surface (Varying Volatility and Price)'
+            },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const { x, y, v } = ctx.raw;
+                  return `Spot: $${x}, Vol: ${y}, P&L: $${v.toFixed(2)}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              title: { display: true, text: 'Spot Price' },
+              type: 'linear'
+            },
+            y: {
+              title: { display: true, text: 'Volatility' },
+              type: 'linear',
+              offset: true,
+            }
+          }
+        }
+      });
+    }
+
     function switchTab(tabId) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -483,6 +599,25 @@
       } catch (err) {
         document.getElementById("volError").innerText = err.message;
         console.error(err);
+      }
+    }
+    async function fetchPnlLivePrice() {
+      const symbol = document.getElementById("pnlSymbol").value.toUpperCase();
+      if (!symbol) return;
+
+      try {
+        const res = await fetch(`http://localhost:5001/price/${symbol}`);
+        const data = await res.json();
+
+        if (data.price) {
+          document.getElementById("pnlLivePrice").innerText = `Live Price: $${data.price.toFixed(2)}`;
+          document.getElementById("pnlS").value = data.price.toFixed(2);  // autofill spot price input
+        } else {
+          document.getElementById("pnlLivePrice").innerText = "Symbol not found.";
+        }
+      } catch (err) {
+        document.getElementById("pnlLivePrice").innerText = "Failed to fetch price.";
+        console.error("P&L price fetch failed:", err);
       }
     }
   </script>
