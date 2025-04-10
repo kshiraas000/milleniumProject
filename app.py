@@ -4,8 +4,6 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from random import choice
 from threading import Thread
-import time
-import random
 import os
 from dotenv import load_dotenv 
 import yfinance as yf
