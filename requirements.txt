@@ -1,0 +1,47 @@
+# Core Flask App
+Flask==3.1.0
+flask-cors==5.0.1
+Flask-SQLAlchemy==3.1.1
+python-dotenv==1.1.0
+
+# Google Gemini + API Clients
+google-generativeai==0.8.4
+google-api-python-client==2.116.0
+google-auth==2.38.0
+google-auth-httplib2==0.2.0
+httplib2==0.22.0
+uritemplate==4.1.1
+protobuf==4.25.3
+grpcio>=1.49.1
+grpcio-status>=1.49.1
+google-api-core[grpc]>=2.24.2
+
+# ML + Deep Learning
+tensorflow==2.16.2
+keras==3.1.1
+scikit-learn==1.4.1.post1
+pandas-ta==0.3.14b0
+
+# Data Handling
+pandas==2.2.2
+numpy==1.26.4
+scipy==1.11.4
+yfinance==0.2.55
+joblib==1.4.2
+tqdm==4.67.1
+requests==2.31.0
+
+# DB Clients
+SQLAlchemy==2.0.39
+PyMySQL==1.1.1
+mysqlclient==2.2.7
+
+# TensorBoard (optional)
+tensorboard==2.16.2
+tensorboard-data-server==0.7.2
+
+# Other utils
+beautifulsoup4==4.13.3
+rich==14.0.0
+
+gunicorn==21.2.0

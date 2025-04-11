@@ -1,5 +1,5 @@
 from flask_cors import CORS
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from random import choice
@@ -20,8 +20,13 @@ import google.generativeai as genai
 from collections import defaultdict
 from datetime import timedelta
 
-app = Flask(__name__)
+#app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='', template_folder='.')
 CORS(app)
+@app.route('/')
+def serve_index():
+    return send_from_directory('.', 'index.html')
+
 
 load_dotenv()  # Load environment variables from .env file
 # we need to input our MYSQL database here
@@ -623,4 +628,4 @@ if __name__ == '__main__':
         db.create_all()
     # Thread(target=simulate_price_feed, daemon=True).start()
     #Thread(target=auto_execute_orders, daemon=True).start()
-    app.run(debug=True, port=5001)
+    #app.run(debug=True, port=5001)
