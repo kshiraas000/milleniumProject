@@ -659,4 +659,4 @@ if __name__ == '__main__':
         db.create_all()
     # Thread(target=simulate_price_feed, daemon=True).start()
     #Thread(target=auto_execute_orders, daemon=True).start()
-    app.run(debug=True, port=5001)
+    #app.run(debug=True, port=5001)
