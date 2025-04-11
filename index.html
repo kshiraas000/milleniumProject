@@ -114,7 +114,7 @@
             <td>${order.state}</td>
             <td class="actions">
               <button onclick="executeOrder(${order.id})">Execute</button>
-              <button onclick="cancelOrder(${order.id})">Cancel</button>
+              <button onclick="cancelOrder(${order.id})">Delete</button>
             </td>
             <td>$${order.execution_price || '-'}</td>
             <td>${order.execution_time ? new Date(order.execution_time).toLocaleString() : '-'}</td>
@@ -188,8 +188,25 @@
 
 
     async function cancelOrder(id) {
-      await fetch(`http://localhost:5001/orders/${id}/cancel`, { method: "PUT" });
-      fetchOrders();
+      const confirmed = confirm("Are you sure you want to delete this order?");
+      if (!confirmed) return;
+
+      try {
+        const res = await fetch(`http://localhost:5001/orders/${id}`, {
+          method: "DELETE"
+        });
+        const data = await res.json();
+
+        if (data.message) {
+          showExecutionPopup(data.message);
+        } else {
+          showExecutionPopup("⚠️ Could not delete order.");
+        }
+        fetchOrders(); // refresh table
+      } catch (err) {
+        console.error("Delete failed:", err);
+        showExecutionPopup("❌ Failed to delete order.");
+      }
     }
 
     async function fetchPrediction() {

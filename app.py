@@ -408,18 +408,19 @@ def execute_order(order_id):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/orders/<int:order_id>/cancel', methods=['PUT'])
-def cancel_order(order_id):
+@app.route('/orders/<int:order_id>', methods=['DELETE'])
+def delete_order(order_id):
     order = Order.query.get(order_id)
     if not order:
         return jsonify({"error": "Order not found"}), 404
 
     if order.state in ["filled", "partially filled"]:
-        return jsonify({"error": "Order cannot be canceled after execution"}), 400
+        return jsonify({"error": "Filled orders cannot be deleted."}), 400
 
-    order.state = "canceled"
+    db.session.delete(order)
     db.session.commit()
-    return jsonify({"message": f"Order {order_id} has been canceled"}), 200
+    return jsonify({"message": f"Order {order_id} deleted successfully."}), 200
+
 
 @app.route('/orders', methods=['GET'])
 def get_orders():
@@ -647,6 +648,7 @@ def get_portfolio_performance():
 if __name__ == '__main__':
     # Create the database tables 
     with app.app_context():
+        #db.drop_all()
         db.create_all()
     # Thread(target=simulate_price_feed, daemon=True).start()
     #Thread(target=auto_execute_orders, daemon=True).start()
