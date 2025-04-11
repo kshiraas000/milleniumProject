@@ -43,3 +43,5 @@ tensorboard-data-server==0.7.2
 # Other utils
 beautifulsoup4==4.13.3
 rich==14.0.0
+
+gunicorn==21.2.0
