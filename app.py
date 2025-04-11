@@ -45,10 +45,6 @@ from flask import send_from_directory
 def home_page():
     return send_from_directory('.', 'index.html')
 
-@app.route('/dashboard')
-def dashboard_page():
-    return send_from_directory('.', 'dashboard.html')
-
 @app.route('/options')
 def options_page():
     return send_from_directory('.', 'options.html')
