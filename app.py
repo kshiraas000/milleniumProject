@@ -157,22 +157,6 @@ def get_opinion(symbol):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# Simulated price store (in-memory for now)
-# live_prices = {
-#     "AAPL": 150.00,
-#     "MSFT": 310.00,
-#     "TSLA": 720.00,
-#     "NVDA": 920.00
-# }
-
-# def simulate_price_feed():
-#     while True:
-#         for symbol in live_prices:
-#             # Simulate a small price change
-#             change = random.uniform(-0.5, 0.5)
-#             live_prices[symbol] = round(max(0, live_prices[symbol] + change), 2)
-#         time.sleep(1)  # update every second
 @app.route('/dashboard')
 def dashboard_page():
     return send_from_directory('.', 'dashboard.html')
@@ -246,7 +230,6 @@ class Order(db.Model):
 
     limit_price = db.Column(db.Float, nullable=True)
     stop_price = db.Column(db.Float, nullable=True)
-    trail_amount = db.Column(db.Float, nullable=True)
 
     state = db.Column(db.String(20), nullable=False, default='new')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -268,7 +251,7 @@ class Order(db.Model):
             "expiration_date": self.expiration_date.isoformat() if self.expiration_date else None,
             "limit_price": self.limit_price,
             "stop_price": self.stop_price,
-            "trail_amount": self.trail_amount,
+            # "trail_amount": self.trail_amount,
             "state": self.state,
             "created_at": self.created_at.isoformat(),
             "execution_price": self.execution_price,
@@ -295,7 +278,7 @@ def create_order():
         quantity=data['quantity'],
         limit_price=data.get('limit_price'),
         stop_price=data.get('stop_price'),
-        trail_amount=data.get('trail_amount'),
+        # trail_amount=data.get('trail_amount'),
         option_type=data.get('option_type'),
         strike_price=data.get('strike_price'),
         expiration_date=expiration_date,
@@ -365,27 +348,6 @@ def execute_order(order_id):
                     filled = True
                     order.state = "filled"
 
-        elif order.order_category == "trailing-stop":
-            if order.trail_amount is not None:
-                # Initialize anchor if not yet set
-                if not hasattr(order, 'trailing_anchor') or order.trailing_anchor is None:
-                    order.trailing_anchor = market_price
-                else:
-                    if order.order_type == "sell":
-                        if market_price > order.trailing_anchor:
-                            order.trailing_anchor = market_price
-                        stop_trigger = order.trailing_anchor - order.trail_amount
-                        if market_price <= stop_trigger:
-                            filled = True
-                            order.state = "filled"
-                    elif order.order_type == "buy":
-                        if market_price < order.trailing_anchor:
-                            order.trailing_anchor = market_price
-                        stop_trigger = order.trailing_anchor + order.trail_amount
-                        if market_price >= stop_trigger:
-                            filled = True
-                            order.state = "filled"
-
         if filled:
             order.execution_price = execution_price
             order.execution_time = datetime.utcnow()
@@ -439,6 +401,7 @@ SCALER_CACHE = {}
 
 def load_model_and_scaler(symbol):
     symbol = symbol.lower()
+    # storing trained LSTM model and MinMax Scaler object
     model_path = f"models/{symbol}_lstm.h5"
     scaler_path = f"models/{symbol}_scaler.npy"
 
@@ -498,32 +461,40 @@ def train_and_save_model(symbol):
 @app.route('/predict/<symbol>', methods=['GET'])
 def predict_stock(symbol):
     try:
-        # 1. Get the most recent 60 days of data
+        # we use yahoo finance api to fetch 6 months of historical data fro stock
         stock = yf.Ticker(symbol)
         df = stock.history(period="6mo", interval="1d")
 
         if df.empty or len(df) < 65:
             return jsonify({"error": "Not enough recent data for prediction"}), 404
 
+        # Technical Indicators
+        # we're finsing simple/exponential moving average and relative strength index
+        #average closing price over ten days helps reduce noise in daily price movements
         df['SMA_10'] = ta.sma(df['Close'], length=10)
+        #more weight given to recent prices so reacts faster to price changes (trend shifts)
         df['EMA_10'] = ta.ema(df['Close'], length=10)
+        # measures momentum recent gains vs recent losess  -> current price trends will continue or reverse
         df['RSI'] = ta.rsi(df['Close'], length=14)
         df.dropna(inplace=True)
 
-        # 2. Select only the last 60 days of features
+        # all our features (tech indicators and close price and volume of stock)
+        # we input the last 60 days of features into our LSTM model
         feature_cols = ['Close', 'Volume', 'SMA_10', 'EMA_10', 'RSI']
         latest_data = df[feature_cols].values[-60:]
 
-        # 3. Load model + scaler
+        # loading LSTM model and saving minmax scaler
         model, scaler = load_model_and_scaler(symbol)
         scaled_input = scaler.transform(latest_data).reshape(1, 60, len(feature_cols))
 
-        # 4. Make 7-day prediction
+        # we get a 7 day sequence of scaled closing prices from out model
         pred_scaled = model.predict(scaled_input)[0]
         pred_combined = np.zeros((7, len(feature_cols)))
-        pred_combined[:, 0] = pred_scaled  # Only 'Close' is predicted
+        pred_combined[:, 0] = pred_scaled  # Only close price is predicted
+        #inverse transform scaled prediction to real prices
         pred_actual = scaler.inverse_transform(pred_combined)[:, 0]
 
+        # builds 7 days of predicted prices, current price, difference, percent change, profit or loss 
         predictions = [round(float(p), 2) for p in pred_actual]
         current_price = round(float(df['Close'].iloc[-1]), 2)
         predicted_final = predictions[-1]
@@ -574,7 +545,7 @@ def parse_natural_order():
 
     prompt = f"""
 You are a trading assistant. Convert the following natural language into a JSON object for order placement.
-Fields: order_type, symbol, quantity, limit_price, stop_price, trail_amount (if available).
+Fields: order_type, symbol, quantity, limit_price, stop_price (if available).
 
 Example:
 "I want to buy 10 shares of NVDA if it drops below $850" → 

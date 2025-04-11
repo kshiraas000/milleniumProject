@@ -17,7 +17,6 @@
             <option value="limit">Limit</option>
             <option value="stop">Stop</option>
             <option value="stop-limit">Stop-Limit</option>
-            <option value="trailing-stop">Trailing Stop</option>
           </select>
           
           <select id="orderType">
@@ -29,7 +28,6 @@
           <input type="number" id="quantity" placeholder="Quantity">
           <input type="number" id="limitPrice" placeholder="Limit Price" style="display: none;">
           <input type="number" id="stopPrice" placeholder="Stop Price" style="display: none;">
-          <input type="number" id="trailAmount" placeholder="Trailing Amount" style="display: none;">
           <button onclick="createOrder()">Create</button>
           <div id="livePricePopup" style="display: none; margin: 5px 0; font-weight: bold; background: #e3f6ff; padding: 5px 10px; border-radius: 5px;"></div>
     </div>
@@ -74,35 +72,27 @@
   </div>
 
   <script>
+    // so depdending on order category input, change field visibility
     document.getElementById("orderCategory").addEventListener("change", function () {
     const category = this.value;
 
     document.getElementById("limitPrice").style.display = (category === "limit" || category === "stop-limit") ? "inline-block" : "none";
     document.getElementById("stopPrice").style.display = (category === "stop" || category === "stop-limit") ? "inline-block" : "none";
-    document.getElementById("trailAmount").style.display = (category === "trailing-stop") ? "inline-block" : "none";
     });
+    // caps symbols input
     document.getElementById("symbol").addEventListener("input", async function () {
       const symbol = this.value.toUpperCase();
       if (!symbol) return;
-
-      // try {
-      //   const res = await fetch(`http://localhost:5001/price/${symbol}`);
-      //   const data = await res.json();
-      //   if (data.price) {
-      //     document.getElementById("livePrice").innerText = `Live Price: $${data.price}`;
-      //   } else {
-      //     document.getElementById("livePrice").innerText = "Symbol not found";
-      //   }
-      // } catch (err) {
-      //   document.getElementById("livePrice").innerText = "";
-      //   console.error("Price fetch failed:", err);
-      // }
     });
+    // fetching and rendering orders in the table
+    // so we send a GET rrequest to /orders to get a list of all orders from backend
+    // we then parso the JSON response and clear the current table nody content
     async function fetchOrders() {
       const res = await fetch("http://localhost:5001/orders");
       const orders = await res.json();
       const body = document.getElementById("ordersTableBody");
       body.innerHTML = "";
+      // we iterate through each order in JSON response and populate a row in our HTML table
       orders.forEach(order => {
         body.innerHTML += `
           <tr>
@@ -123,14 +113,17 @@
     }
 
     async function createOrder() {
+        // reading user input from HTML form
         const order_type = document.getElementById("orderType").value;       // buy/sell
         const order_category = document.getElementById("orderCategory").value; // market/limit/etc
         const symbol = document.getElementById("symbol").value;
         const quantity = parseInt(document.getElementById("quantity").value);
         const limit_price = parseFloat(document.getElementById("limitPrice").value) || null;
         const stop_price = parseFloat(document.getElementById("stopPrice").value) || null;
-        const trail_amount = parseFloat(document.getElementById("trailAmount").value) || null;
 
+        // sending POST request to backend Flask API to create a new order
+        // request body contains order details in JSON format 
+        // backend handles at create_order() POST method
         await fetch("http://localhost:5001/orders", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -140,19 +133,14 @@
                 symbol,
                 quantity,
                 limit_price,
-                stop_price,
-                trail_amount
+                stop_price
             })
         });
 
+        // refresh table
         fetchOrders();
     }
 
-
-    // async function executeOrder(id) {
-    //   await fetch(`http://localhost:5001/orders/${id}/execute`, { method: "PUT" });
-    //   fetchOrders();
-    // } 
 
     async function executeOrder(id) {
       try {
@@ -209,6 +197,7 @@
       }
     }
 
+    // Fetching Stock Prediction  for 7 days
     async function fetchPrediction() {
       const symbol = document.getElementById("stockSymbol").value.toUpperCase();
       const resultDiv = document.getElementById("predictionResult");
@@ -220,6 +209,8 @@
 
       resultDiv.innerText = "Fetching prediction... ⏳";
 
+      // sending a GET request to flask backend route /predict/symbol (which uses LSTM model)
+      // then parsing reponse from JSON and displaying prediction in HTML
       try {
         const res = await fetch(`http://localhost:5001/predict/${symbol}`);
         const data = await res.json();
@@ -331,7 +322,7 @@ async function convertOrder() {
     if (parsed.quantity) document.getElementById("quantity").value = parsed.quantity;
     if (parsed.limit_price) document.getElementById("limitPrice").value = parsed.limit_price;
     if (parsed.stop_price) document.getElementById("stopPrice").value = parsed.stop_price;
-    if (parsed.trail_amount) document.getElementById("trailAmount").value = parsed.trail_amount;
+    // if (parsed.trail_amount) document.getElementById("trailAmount").value = parsed.trail_amount;
 
     // Trigger any UI changes (e.g. show/hide limit/stop inputs)
     document.getElementById("orderCategory").dispatchEvent(new Event("change"));
